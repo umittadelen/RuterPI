@@ -12,7 +12,7 @@ Config.set('graphics', 'width', '800')
 Config.set('graphics', 'height', '480')
 Config.set('input', 'mouse', 'none')
 Config.set('input', 'hidinput', 'hidinput')
-Config.set('kivy', 'keyboard_mode', 'systemanddock')
+Config.set('kivy', 'keyboard_mode', 'dock')
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
