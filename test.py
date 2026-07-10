@@ -23,7 +23,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
 from kivy.uix.textinput import TextInput
 from kivy.clock import Clock
-from kivy.graphics import Color, RoundedRectangle, Line, Rectangle
+from kivy.graphics import Color, RoundedRectangle, Line, Rectangle, RenderContext
 from kivy.metrics import dp
 from kivy.core.window import Window
 
@@ -53,13 +53,17 @@ def get_cpu_temp():
 
 class PixelLabel(Label):
     def __init__(self, **kwargs):
+        # 1. Force font hinting to 'mono' to stop anti-aliasing at the engine level
         kwargs.setdefault('font_hinting', 'mono')
         kwargs.setdefault('font_name', './fonts/MS PGothic.ttf') 
         super().__init__(**kwargs)
+        # Bind to texture change to reset filtering
         self.bind(texture=self._update_texture_filters)
 
     def _update_texture_filters(self, instance, texture):
         if texture:
+            # 2. Set 'nearest' filtering to prevent blurring when the font 
+            # doesn't perfectly align with the pixel grid
             texture.min_filter = 'nearest'
             texture.mag_filter = 'nearest'
 
@@ -80,19 +84,8 @@ store = DataStore()
 # --- 3. UI COMPONENTS ---
 
 class DepartureRow(BoxLayout):
-    def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, is_large=False, **kwargs):
-        # Determine dynamic sizing
-        self.is_large = is_large
-        row_height = dp(75) if is_large else dp(50)
-        font_main = '22sp' if is_large else '16sp'
-        font_line = '18sp' if is_large else '15sp'
-        font_time = '28sp' if is_large else '19sp'
-        font_aimed = '16sp' if is_large else '14sp'
-        pill_width = dp(65) if is_large else dp(50)
-        pill_height = dp(45) if is_large else dp(32)
-
-        super().__init__(orientation='horizontal', size_hint_y=None, height=row_height, padding=[dp(10), 0], **kwargs)
-        
+    def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, **kwargs):
+        super().__init__(orientation='horizontal', size_hint_y=None, height=dp(50), padding=[dp(10), 0], **kwargs)
         with self.canvas.before:
             self.bg_color = Color(0.12, 0.12, 0.12, 1) if mins <= 1 and not is_cancelled else Color(0, 0, 0, 0)
             self.bg_rect = Rectangle(pos=self.pos, size=self.size)
@@ -100,58 +93,45 @@ class DepartureRow(BoxLayout):
             self.border = Rectangle(pos=(self.x, self.y), size=(self.width, dp(1)))
         self.bind(pos=self._update_graphics, size=self._update_graphics)
 
-        # Line Number Pill
-        pill_box = BoxLayout(size_hint_x=None, width=pill_width, padding=[0, (row_height - pill_height)/2])
+        pill_box = BoxLayout(size_hint_x=None, width=dp(50), padding=[0, dp(8)])
         line_color = get_line_color(line, mode)
         with pill_box.canvas.before:
             Color(*line_color)
-            self.pill_rect = RoundedRectangle(pos=pill_box.pos, size=(pill_width - dp(5), pill_height), radius=[dp(4)])
+            self.pill_rect = RoundedRectangle(pos=pill_box.pos, size=(dp(45), dp(32)), radius=[dp(4)])
         pill_box.bind(pos=self._update_pill)
-        pill_box.add_widget(PixelLabel(text=line, bold=True, font_size=font_line))
+        pill_box.add_widget(PixelLabel(text=line, bold=True, font_size='15sp'))
         self.add_widget(pill_box)
 
-        # Destination
-        self.dest_label = PixelLabel(text=dest.upper(), font_size=font_main, halign='left', valign='middle', shorten=True, shorten_from='right', padding=[dp(10), 0])
+        self.dest_label = PixelLabel(text=dest.upper(), font_size='16sp', halign='left', valign='middle', shorten=True, shorten_from='right', padding=[dp(10), 0])
         self.dest_label.bind(size=self._update_text_size)
         self.add_widget(self.dest_label)
 
-        # Time Column
-        time_width = dp(130) if is_large else dp(95)
-        time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=time_width, padding=[0, dp(5)])
+        time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(95), padding=[0, dp(5)])
         if is_cancelled:
-            time_col.add_widget(PixelLabel(text="CANCELLED", font_size=font_main, bold=True, color=(1, 0.2, 0.2, 1), halign='right'))
+            time_col.add_widget(PixelLabel(text="CANCELLED", font_size='16sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right'))
         else:
-            time_col.add_widget(PixelLabel(text=time_str, font_size=font_time, bold=True, halign='right'))
+            time_col.add_widget(PixelLabel(text=time_str, font_size='19sp', bold=True, halign='right'))
             if is_delayed:
-                time_col.add_widget(PixelLabel(text=aimed_str, font_size=font_aimed, color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
+                time_col.add_widget(PixelLabel(text=aimed_str, font_size='14sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
         self.add_widget(time_col)
 
     def _update_graphics(self, instance, value):
         self.bg_rect.pos = instance.pos; self.bg_rect.size = instance.size
         self.border.pos = instance.pos; self.border.size = (instance.width, dp(1))
     def _update_text_size(self, instance, value): instance.text_size = value
-    def _update_pill(self, instance, value): 
-        # Center the pill vertically
-        row_h = self.height
-        pill_h = dp(45) if self.is_large else dp(32)
-        self.pill_rect.pos = (instance.x, instance.y + (row_h - pill_h)/2)
+    def _update_pill(self, instance, value): self.pill_rect.pos = (instance.x, instance.y + dp(8))
 
 class PlatformWidget(BoxLayout):
-    def __init__(self, platform_label, calls, on_click=None, is_large=False, **kwargs):
-        header_h = dp(45) if is_large else dp(35)
-        row_h = dp(75) if is_large else dp(50)
-        
-        content_height = header_h + (len(calls[:store.cfg['max_per_quay']]) * row_h) + dp(10)
+    def __init__(self, platform_label, calls, on_click=None, **kwargs):
+        content_height = dp(35) + (len(calls[:store.cfg['max_per_quay']]) * dp(50)) + dp(10)
         super().__init__(orientation='vertical', size_hint_y=None, height=content_height, **kwargs)
-        
         with self.canvas.before:
             Color(1, 1, 1, 1)
             self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1)
         self.bind(pos=self._update_border, size=self._update_border)
 
-        header_btn = Button(text=f"PLATFORM {platform_label}", size_hint_y=None, height=header_h, 
-                            bold=True, font_size='18sp' if is_large else '14sp', 
-                            background_normal='', background_color=(1, 1, 1, 0.15))
+        header_btn = Button(text=f"PLATFORM {platform_label}", size_hint_y=None, height=dp(35), 
+                            bold=True, font_size='14sp', background_normal='', background_color=(1, 1, 1, 0.15))
         if on_click:
             header_btn.bind(on_release=lambda x: on_click(platform_label))
         self.add_widget(header_btn)
@@ -164,17 +144,9 @@ class PlatformWidget(BoxLayout):
             t_str = "NÅ" if mins <= 0 else f"{mins} MIN" if mins < 20 else expected.strftime("%H:%M")
             delayed = abs((expected - aimed).total_seconds()) > 60
             cancelled = c.get("predictionInaccurate", False) or c.get("status") == "cancelled"
-            
-            self.add_widget(DepartureRow(
-                c["serviceJourney"]["line"]["publicCode"], 
-                c["destinationDisplay"]["frontText"], 
-                t_str, aimed.strftime("%H:%M"), 
-                delayed, cancelled, mins, 
-                c["serviceJourney"]["transportMode"],
-                is_large=is_large
-            ))
+            self.add_widget(DepartureRow(c["serviceJourney"]["line"]["publicCode"], c["destinationDisplay"]["frontText"], t_str, aimed.strftime("%H:%M"), delayed, cancelled, mins, c["serviceJourney"]["transportMode"]))
 
-    def _update_border(self, instance, value): self.border.rectangle = (instance.x, instance.y, instance.width, self.height)
+    def _update_border(self, instance, value): self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
 
 # --- 4. SCREENS ---
 
@@ -200,6 +172,7 @@ class MainScreen(Screen):
         self.actions = BoxLayout(size_hint_x=0.4, spacing=dp(10), padding=[0, dp(10)])
         self.temp = Label(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.4)
         
+        # The Back Button is created but NOT added yet
         self.btn_back_all = Button(text="BACK", bold=True, background_color=(0, 0.4, 0.8, 1), size_hint_x=0.6)
         self.btn_back_all.bind(on_release=self.reset_filter)
         
@@ -228,13 +201,16 @@ class MainScreen(Screen):
 
     def reset_filter(self, *args):
         self.filtered_quay = None
+        # Safely remove the back button if it exists in the layout
         if self.btn_back_all in self.actions.children:
             self.actions.remove_widget(self.btn_back_all)
         self.update_ui(self.last_data)
 
     def filter_to_quay(self, quay_label):
         self.filtered_quay = quay_label
+        # Add the back button to the actions layout if not already there
         if self.btn_back_all not in self.actions.children:
+            # Insert it before the Config button (index 1)
             self.actions.add_widget(self.btn_back_all, index=2)
         self.update_ui(self.last_data)
 
@@ -253,7 +229,6 @@ class MainScreen(Screen):
               aimedDepartureTime
               expectedDepartureTime
               predictionInaccurate
-              status
               quay {{ id publicCode name }}
               destinationDisplay {{ frontText }}
               serviceJourney {{ transportMode line {{ publicCode }} }}
@@ -269,10 +244,7 @@ class MainScreen(Screen):
     def update_ui(self, calls):
         self.stop_name.text = store.cfg['stop_name'].upper()
         self.board_grid.clear_widgets()
-        
-        # Decide if we are showing many platforms or one big one
-        is_large = self.filtered_quay is not None
-        self.board_grid.cols = 1 if is_large else 2
+        self.board_grid.cols = 2 if not self.filtered_quay else 1
         
         grouped = {}
         now = datetime.now(timezone.utc)
@@ -287,7 +259,7 @@ class MainScreen(Screen):
                 grouped.setdefault(p_label, []).append(c)
 
         for p_label in sorted(grouped.keys()):
-            self.board_grid.add_widget(PlatformWidget(p_label, grouped[p_label], on_click=self.filter_to_quay, is_large=is_large))
+            self.board_grid.add_widget(PlatformWidget(p_label, grouped[p_label], on_click=self.filter_to_quay))
 
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
