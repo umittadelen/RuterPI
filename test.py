@@ -32,42 +32,18 @@ CONFIG_FILE = "config.json"
 DEFAULT_CONFIG = {"stop_id": "NSR:StopPlace:58309", "stop_name": "Grefsen stadion", "max_per_quay": 6}
 
 def get_line_color(line, mode):
-    """Returns normalized RGB colors matching Ruter/Entur standards"""
     mode = mode.lower()
-    
-    # Metro (T-bane) specific colors
     if mode == 'metro':
-        metro_colors = {
-            "1": (0.92, 0.44, 0.05, 1), # Orange
-            "2": (0.90, 0.00, 0.00, 1), # Red
-            "3": (0.66, 0.00, 0.42, 1), # Purple
-            "4": (0.00, 0.27, 0.58, 1), # Dark Blue
-            "5": (0.00, 0.56, 0.23, 1), # Green
-        }
+        metro_colors = {"1": (0.92, 0.44, 0.05, 1), "2": (0.90, 0, 0, 1), "3": (0.66, 0, 0.42, 1), "4": (0, 0.27, 0.58, 1), "5": (0, 0.56, 0.23, 1)}
         return metro_colors.get(line, (0.4, 0.4, 0.4, 1))
-
-    # Tram (Trikk) - Standard Blue
-    if mode == 'tram':
-        return (0.00, 0.35, 0.70, 1)
-
-    # Rail (Train) - Standard Rail Blue
-    if mode == 'rail':
-        return (0.00, 0.20, 0.40, 1)
-
-    # Water (Ferry) - Standard Light Blue
-    if mode == 'water':
-        return (0.00, 0.65, 0.85, 1)
-
-    # Bus logic
+    if mode == 'tram': return (0.00, 0.35, 0.70, 1)
+    if mode == 'rail': return (0.00, 0.20, 0.40, 1)
+    if mode == 'water': return (0.00, 0.65, 0.85, 1)
     if mode == 'bus':
-        # Regional/Express buses are green (usually 3 digits or starting with high numbers)
         if len(line) >= 3 or line.startswith(('1', '2', '3', '4', '5')):
-            if len(line) == 2: # Exception for some city buses
-                return (0.90, 0.00, 0.00, 1)
-            return (0.00, 0.55, 0.25, 1) # Regional Green
-        return (0.90, 0.00, 0.00, 1) # City Bus Red
-
-    return (0.3, 0.3, 0.3, 1) # Default Grey
+            return (0.00, 0.55, 0.25, 1) if len(line) != 2 else (0.90, 0, 0, 1)
+        return (0.90, 0.00, 0.00, 1)
+    return (0.3, 0.3, 0.3, 1)
 
 def get_cpu_temp():
     try:
@@ -92,10 +68,10 @@ store = DataStore()
 # --- 3. UI COMPONENTS ---
 
 class DepartureRow(BoxLayout):
-    def __init__(self, line, dest, time_str, aimed_str, is_delayed, mins, mode, **kwargs):
+    def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, **kwargs):
         super().__init__(orientation='horizontal', size_hint_y=None, height=dp(50), padding=[dp(10), 0], **kwargs)
         with self.canvas.before:
-            self.bg_color = Color(0.12, 0.12, 0.12, 1) if mins <= 1 else Color(0, 0, 0, 0)
+            self.bg_color = Color(0.12, 0.12, 0.12, 1) if mins <= 1 and not is_cancelled else Color(0, 0, 0, 0)
             self.bg_rect = Rectangle(pos=self.pos, size=self.size)
             Color(0.25, 0.25, 0.25, 1)
             self.border = Rectangle(pos=(self.x, self.y), size=(self.width, dp(1)))
@@ -117,11 +93,17 @@ class DepartureRow(BoxLayout):
         self.dest_label.bind(size=self._update_text_size)
         self.add_widget(self.dest_label)
 
-        # 3. Time
-        time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(85), padding=[0, dp(5)])
-        time_col.add_widget(Label(text=time_str, font_size='19sp', bold=True, halign='right'))
-        if is_delayed:
-            time_col.add_widget(Label(text=aimed_str, font_size='11sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
+        # 3. Time / Cancellation Column
+        time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(95), padding=[0, dp(5)])
+        
+        if is_cancelled:
+            # Display "INNSTILT" (Cancelled) in Red
+            time_col.add_widget(Label(text="INNSTILT", font_size='16sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right'))
+        else:
+            time_col.add_widget(Label(text=time_str, font_size='19sp', bold=True, halign='right'))
+            if is_delayed:
+                time_col.add_widget(Label(text=aimed_str, font_size='11sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
+        
         self.add_widget(time_col)
 
     def _update_graphics(self, instance, value):
@@ -131,101 +113,135 @@ class DepartureRow(BoxLayout):
     def _update_pill(self, instance, value): self.pill_rect.pos = (instance.x, instance.y + dp(8))
 
 class PlatformWidget(BoxLayout):
-    def __init__(self, platform_label, calls, **kwargs):
+    def __init__(self, platform_label, calls, on_click=None, **kwargs):
         content_height = dp(35) + (len(calls[:store.cfg['max_per_quay']]) * dp(50)) + dp(10)
         super().__init__(orientation='vertical', size_hint_y=None, height=content_height, **kwargs)
+        
         with self.canvas.before:
             Color(1, 1, 1, 1)
             self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1)
         self.bind(pos=self._update_border, size=self._update_border)
 
-        header = Label(text=f"PLATFORM {platform_label}", size_hint_y=None, height=dp(35), bold=True, font_size='14sp')
-        with header.canvas.before:
-            Color(1, 1, 1, 0.15)
-            self.h_bg = Rectangle(pos=header.pos, size=header.size)
-        header.bind(pos=self._update_h_bg, size=self._update_h_bg)
-        self.add_widget(header)
+        # Platform Header - Now a Button to allow filtering
+        header_btn = Button(text=f"PLATFORM {platform_label}", size_hint_y=None, height=dp(35), 
+                            bold=True, font_size='14sp', background_normal='', background_color=(1, 1, 1, 0.15))
+        if on_click:
+            header_btn.bind(on_release=lambda x: on_click(platform_label))
+        self.add_widget(header_btn)
 
         now = datetime.now(timezone.utc)
         for c in calls[:store.cfg['max_per_quay']]:
             expected = datetime.fromisoformat(c["expectedDepartureTime"].replace("Z", "+00:00"))
             aimed = datetime.fromisoformat(c["aimedDepartureTime"].replace("Z", "+00:00"))
             mins = int((expected - now).total_seconds() / 60)
+            
+            # Formatting
             t_str = "NÅ" if mins <= 0 else f"{mins} MIN" if mins < 20 else expected.strftime("%H:%M")
             delayed = abs((expected - aimed).total_seconds()) > 60
-            mode = c["serviceJourney"]["transportMode"]
+            
+            # Cancellation detection
+            cancelled = c.get("predictionInaccurate", False) or c.get("status") == "cancelled"
             
             self.add_widget(DepartureRow(
                 c["serviceJourney"]["line"]["publicCode"], 
                 c["destinationDisplay"]["frontText"], 
-                t_str, aimed.strftime("%H:%M"), delayed, mins, mode
+                t_str, aimed.strftime("%H:%M"), delayed, cancelled, mins, 
+                c["serviceJourney"]["transportMode"]
             ))
 
     def _update_border(self, instance, value): self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
-    def _update_h_bg(self, instance, value): self.h_bg.pos = instance.pos; self.h_bg.size = instance.size
 
 # --- 4. SCREENS ---
 
 class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.filtered_quay = None
+        self.last_data = []
+        
         self.layout = BoxLayout(orientation='vertical')
+        
+        # Header Bar
         header = BoxLayout(size_hint_y=None, height=dp(70), padding=[dp(15), 0], spacing=dp(10))
         with header.canvas.after:
             Color(1, 1, 1, 1)
             self.line = Rectangle(pos=(0, 0), size=(Window.width, dp(2)))
         header.bind(pos=self._update_line, size=self._update_line)
 
-        self.stop_name = Label(text="---", font_size='22sp', bold=True, halign='left', size_hint_x=0.45)
+        self.stop_name = Label(text="---", font_size='22sp', bold=True, halign='left', size_hint_x=0.4)
         self.clock = Label(text="00:00", font_size='34sp', bold=True, size_hint_x=0.2)
-        actions = BoxLayout(size_hint_x=0.35, spacing=dp(10), padding=[0, dp(10)])
-        self.temp = Label(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.4)
+        
+        self.actions = BoxLayout(size_hint_x=0.4, spacing=dp(8), padding=[0, dp(10)])
+        self.temp = Label(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.3)
+        self.btn_back_all = Button(text="BACK TO ALL", bold=True, background_color=(0, 0.4, 0.8, 1), size_hint_x=0) # Hidden initially
         self.btn_cfg = Button(text="CONFIG", bold=True, background_color=(0.2, 0.2, 0.2, 1))
-        self.btn_exit = Button(text="X", bold=True, size_hint_x=None, width=dp(50), background_color=(0.6, 0.1, 0.1, 1))
+        self.btn_exit = Button(text="X", bold=True, size_hint_x=None, width=dp(45), background_color=(0.6, 0.1, 0.1, 1))
         
-        actions.add_widget(self.temp); actions.add_widget(self.btn_cfg); actions.add_widget(self.btn_exit)
-        header.add_widget(self.stop_name); header.add_widget(self.clock); header.add_widget(actions)
+        self.actions.add_widget(self.temp)
+        self.actions.add_widget(self.btn_back_all)
+        self.actions.add_widget(self.btn_cfg)
+        self.actions.add_widget(self.btn_exit)
         
+        header.add_widget(self.stop_name)
+        header.add_widget(self.clock)
+        header.add_widget(self.actions)
+        
+        # Board Scroll Area
         self.scroll = ScrollView(do_scroll_x=False, do_scroll_y=True, bar_width=dp(5))
         self.board_grid = GridLayout(cols=2, size_hint_y=None, spacing=dp(10), padding=dp(5))
         self.board_grid.bind(minimum_height=self.board_grid.setter('height'))
         
         self.scroll.add_widget(self.board_grid)
-        self.layout.add_widget(header); self.layout.add_widget(self.scroll)
+        self.layout.add_widget(header)
+        self.layout.add_widget(self.scroll)
         self.add_widget(self.layout)
+        
+        self.btn_back_all.bind(on_release=self.reset_filter)
 
     def _update_line(self, instance, value): self.line.pos = (instance.x, instance.y); self.line.size = (instance.width, dp(2))
+
+    def reset_filter(self, *args):
+        self.filtered_quay = None
+        self.btn_back_all.size_hint_x = 0
+        self.update_ui(self.last_data)
+
+    def filter_to_quay(self, quay_label):
+        self.filtered_quay = quay_label
+        self.btn_back_all.size_hint_x = 0.5
+        self.update_ui(self.last_data)
+
     def on_enter(self):
         Clock.schedule_interval(self.tick, 1)
-        self.fetch_data(); Clock.schedule_interval(lambda dt: self.fetch_data(), 15)
+        self.fetch_data()
+        Clock.schedule_interval(lambda dt: self.fetch_data(), 20)
+
     def tick(self, dt): self.clock.text = datetime.now().strftime("%H:%M"); self.temp.text = get_cpu_temp()
     def fetch_data(self): threading.Thread(target=self._query, daemon=True).start()
 
     def _query(self):
-        # UPDATED QUERY: Added 'transportMode'
         q = f'''{{
           stopPlace(id: "{store.cfg['stop_id']}") {{
             estimatedCalls(numberOfDepartures: 50) {{
               aimedDepartureTime
               expectedDepartureTime
+              predictionInaccurate
               quay {{ id publicCode name }}
               destinationDisplay {{ frontText }}
-              serviceJourney {{ 
-                transportMode
-                line {{ publicCode }} 
-              }}
+              serviceJourney {{ transportMode line {{ publicCode }} }}
             }}
           }}
         }}'''
         try:
             r = requests.post("https://api.entur.io/journey-planner/v3/graphql", headers={"ET-Client-Name": "raspi-kivy"}, json={"query": q}, timeout=5)
-            data = r.json()["data"]["stopPlace"]["estimatedCalls"]
-            Clock.schedule_once(lambda dt: self.update_ui(data))
+            self.last_data = r.json()["data"]["stopPlace"]["estimatedCalls"]
+            Clock.schedule_once(lambda dt: self.update_ui(self.last_data))
         except: pass
 
     def update_ui(self, calls):
         self.stop_name.text = store.cfg['stop_name'].upper()
         self.board_grid.clear_widgets()
+        self.board_grid.cols = 2 if not self.filtered_quay else 1
+        
         grouped = {}
         now = datetime.now(timezone.utc)
         
@@ -235,10 +251,15 @@ class MainScreen(Screen):
                 q_info = c.get("quay", {})
                 p_label = q_info.get("publicCode") or q_info.get("name", "").replace(store.cfg['stop_name'], "").strip()
                 if not p_label or len(p_label) > 5: p_label = q_info.get("id", "??").split(":")[-1]
+                
+                if self.filtered_quay and p_label != self.filtered_quay:
+                    continue
+                
                 grouped.setdefault(p_label, []).append(c)
 
         for p_label in sorted(grouped.keys()):
-            self.board_grid.add_widget(PlatformWidget(p_label, grouped[p_label]))
+            # Passing self.filter_to_quay as a callback to the platform widget
+            self.board_grid.add_widget(PlatformWidget(p_label, grouped[p_label], on_click=self.filter_to_quay))
 
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
