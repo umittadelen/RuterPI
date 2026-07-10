@@ -84,8 +84,18 @@ store = DataStore()
 # --- 3. UI COMPONENTS ---
 
 class DepartureRow(BoxLayout):
-    def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, **kwargs):
-        super().__init__(orientation='horizontal', size_hint_y=None, height=dp(50), padding=[dp(10), 0], **kwargs)
+    def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, is_big=False, **kwargs):
+        
+        row_height = dp(80) if is_big else dp(50)
+        f_line = '22sp' if is_big else '15sp'
+        f_dest = '24sp' if is_big else '16sp'
+        f_time = '28sp' if is_big else '19sp'
+        f_aimed = '18sp' if is_big else '14sp'
+        pill_w = dp(70) if is_big else dp(50)
+        time_w = dp(140) if is_big else dp(95)
+
+        super().__init__(orientation='horizontal', size_hint_y=None, height=row_height, padding=[dp(10), 0], **kwargs)
+        
         with self.canvas.before:
             self.bg_color = Color(0.12, 0.12, 0.12, 1) if mins <= 1 and not is_cancelled else Color(0, 0, 0, 0)
             self.bg_rect = Rectangle(pos=self.pos, size=self.size)
@@ -93,33 +103,39 @@ class DepartureRow(BoxLayout):
             self.border = Rectangle(pos=(self.x, self.y), size=(self.width, dp(1)))
         self.bind(pos=self._update_graphics, size=self._update_graphics)
 
-        pill_box = BoxLayout(size_hint_x=None, width=dp(50), padding=[0, dp(8)])
+        # Line Number Pill
+        pill_box = BoxLayout(size_hint_x=None, width=pill_w, padding=[0, dp(10) if is_big else dp(8)])
         line_color = get_line_color(line, mode)
         with pill_box.canvas.before:
             Color(*line_color)
-            self.pill_rect = RoundedRectangle(pos=pill_box.pos, size=(dp(45), dp(32)), radius=[dp(4)])
+            self.pill_rect = RoundedRectangle(pos=pill_box.pos, size=(pill_w - dp(5), row_height - dp(20)), radius=[dp(4)])
         pill_box.bind(pos=self._update_pill)
-        pill_box.add_widget(PixelLabel(text=line, bold=True, font_size='15sp'))
+        pill_box.add_widget(PixelLabel(text=line, bold=True, font_size=f_line))
         self.add_widget(pill_box)
 
-        self.dest_label = PixelLabel(text=dest.upper(), font_size='16sp', halign='left', valign='middle', shorten=True, shorten_from='right', padding=[dp(10), 0])
+        # Destination
+        self.dest_label = PixelLabel(text=dest.upper(), font_size=f_dest, halign='left', valign='middle', shorten=True, shorten_from='right', padding=[dp(15 if is_big else 10), 0])
         self.dest_label.bind(size=self._update_text_size)
         self.add_widget(self.dest_label)
 
-        time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(95), padding=[0, dp(5)])
+        # Time
+        time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=time_w, padding=[0, dp(5)])
         if is_cancelled:
-            time_col.add_widget(PixelLabel(text="CANCELLED", font_size='16sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right'))
+            time_col.add_widget(PixelLabel(text="CANCELLED", font_size=f_dest, bold=True, color=(1, 0.2, 0.2, 1), halign='right'))
         else:
-            time_col.add_widget(PixelLabel(text=time_str, font_size='19sp', bold=True, halign='right'))
+            time_col.add_widget(PixelLabel(text=time_str, font_size=f_time, bold=True, halign='right'))
             if is_delayed:
-                time_col.add_widget(PixelLabel(text=aimed_str, font_size='14sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
+                time_col.add_widget(PixelLabel(text=aimed_str, font_size=f_aimed, color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
         self.add_widget(time_col)
 
     def _update_graphics(self, instance, value):
         self.bg_rect.pos = instance.pos; self.bg_rect.size = instance.size
         self.border.pos = instance.pos; self.border.size = (instance.width, dp(1))
     def _update_text_size(self, instance, value): instance.text_size = value
-    def _update_pill(self, instance, value): self.pill_rect.pos = (instance.x, instance.y + dp(8))
+    def _update_pill(self, instance, value): 
+        # Adjust pill centering based on big mode
+        offset = dp(10) if self.height > dp(60) else dp(8)
+        self.pill_rect.pos = (instance.x, instance.y + offset)
 
 class PlatformWidget(BoxLayout):
     def __init__(self, platform_label, calls, on_click=None, **kwargs):
@@ -244,6 +260,8 @@ class MainScreen(Screen):
     def update_ui(self, calls):
         self.stop_name.text = store.cfg['stop_name'].upper()
         self.board_grid.clear_widgets()
+        
+        is_single = self.filtered_quay is not None
         self.board_grid.cols = 2 if not self.filtered_quay else 1
         
         grouped = {}
@@ -259,7 +277,12 @@ class MainScreen(Screen):
                 grouped.setdefault(p_label, []).append(c)
 
         for p_label in sorted(grouped.keys()):
-            self.board_grid.add_widget(PlatformWidget(p_label, grouped[p_label], on_click=self.filter_to_quay))
+            self.board_grid.add_widget(PlatformWidget(
+                p_label,
+                grouped[p_label],
+                on_click=self.filter_to_quay,
+                is_big=is_single
+            ))
 
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
