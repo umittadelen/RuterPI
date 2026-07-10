@@ -84,22 +84,8 @@ store = DataStore()
 # --- 3. UI COMPONENTS ---
 
 class DepartureRow(BoxLayout):
-    def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, is_big=False, **kwargs):
-        
-        # Define specific sizes based on mode
-        row_height = dp(80) if is_big else dp(50)
-        pill_w = dp(65) if is_big else dp(46)
-        # Pill height is slightly smaller than the row
-        self.pill_h = dp(50) if is_big else dp(32)
-        
-        f_line = '22sp' if is_big else '15sp'
-        f_dest = '24sp' if is_big else '16sp'
-        f_time = '28sp' if is_big else '19sp'
-        f_aimed = '18sp' if is_big else '14sp'
-        time_w = dp(140) if is_big else dp(95)
-
-        super().__init__(orientation='horizontal', size_hint_y=None, height=row_height, padding=[dp(10), 0], **kwargs)
-        
+    def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, **kwargs):
+        super().__init__(orientation='horizontal', size_hint_y=None, height=dp(50), padding=[dp(10), 0], **kwargs)
         with self.canvas.before:
             self.bg_color = Color(0.12, 0.12, 0.12, 1) if mins <= 1 and not is_cancelled else Color(0, 0, 0, 0)
             self.bg_rect = Rectangle(pos=self.pos, size=self.size)
@@ -107,73 +93,45 @@ class DepartureRow(BoxLayout):
             self.border = Rectangle(pos=(self.x, self.y), size=(self.width, dp(1)))
         self.bind(pos=self._update_graphics, size=self._update_graphics)
 
-        # 1. Pill Box: Remove padding to stop it from pushing the pill up
-        pill_box = BoxLayout(size_hint_x=None, width=pill_w)
+        pill_box = BoxLayout(size_hint_x=None, width=dp(50), padding=[0, dp(8)])
         line_color = get_line_color(line, mode)
-        
         with pill_box.canvas.before:
             Color(*line_color)
-            # 2. Set the rectangle size once here
-            self.pill_rect = RoundedRectangle(size=(pill_w - dp(6), self.pill_h), radius=[dp(4)])
-            
-        pill_box.bind(pos=self._update_pill, size=self._update_pill)
-        pill_box.add_widget(PixelLabel(text=line, bold=True, font_size=f_line))
+            self.pill_rect = RoundedRectangle(pos=pill_box.pos, size=(dp(45), dp(32)), radius=[dp(4)])
+        pill_box.bind(pos=self._update_pill)
+        pill_box.add_widget(PixelLabel(text=line, bold=True, font_size='15sp'))
         self.add_widget(pill_box)
 
-        # Destination
-        self.dest_label = PixelLabel(text=dest.upper(), font_size=f_dest, halign='left', valign='middle', shorten=True, shorten_from='right', padding=[dp(15 if is_big else 10), 0])
+        self.dest_label = PixelLabel(text=dest.upper(), font_size='16sp', halign='left', valign='middle', shorten=True, shorten_from='right', padding=[dp(10), 0])
         self.dest_label.bind(size=self._update_text_size)
         self.add_widget(self.dest_label)
 
-        # Time Column
-        time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=time_w, padding=[0, dp(5)])
+        time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(95), padding=[0, dp(5)])
         if is_cancelled:
-            time_col.add_widget(PixelLabel(text="CANCELLED", font_size=f_dest, bold=True, color=(1, 0.2, 0.2, 1), halign='right'))
+            time_col.add_widget(PixelLabel(text="CANCELLED", font_size='16sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right'))
         else:
-            time_col.add_widget(PixelLabel(text=time_str, font_size=f_time, bold=True, halign='right'))
+            time_col.add_widget(PixelLabel(text=time_str, font_size='19sp', bold=True, halign='right'))
             if is_delayed:
-                time_col.add_widget(PixelLabel(text=aimed_str, font_size=f_aimed, color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
+                time_col.add_widget(PixelLabel(text=aimed_str, font_size='14sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
         self.add_widget(time_col)
 
     def _update_graphics(self, instance, value):
-        self.bg_rect.pos = instance.pos
-        self.bg_rect.size = instance.size
-        self.border.pos = instance.pos
-        self.border.size = (instance.width, dp(1))
-
-    def _update_text_size(self, instance, value): 
-        instance.text_size = value
-
-    def _update_pill(self, instance, value): 
-        # 3. Robust math: Center the rectangle exactly inside the box's current Y
-        # instance.y is the bottom of the row, height/2 is middle, pill_h/2 pulls it back to center
-        self.pill_rect.pos = (instance.x, instance.y + (instance.height - self.pill_h) / 2)
+        self.bg_rect.pos = instance.pos; self.bg_rect.size = instance.size
+        self.border.pos = instance.pos; self.border.size = (instance.width, dp(1))
+    def _update_text_size(self, instance, value): instance.text_size = value
+    def _update_pill(self, instance, value): self.pill_rect.pos = (instance.x, instance.y + dp(8))
 
 class PlatformWidget(BoxLayout):
-    def __init__(self, platform_label, calls, on_click=None, is_big=False, **kwargs):
-
-        row_h = dp(80) if is_big else dp(50)
-        header_h = dp(45) if is_big else dp(35)
-        
-        content_height = header_h + (len(calls[:store.cfg['max_per_quay']]) * row_h) + dp(10)
-
+    def __init__(self, platform_label, calls, on_click=None, **kwargs):
+        content_height = dp(35) + (len(calls[:store.cfg['max_per_quay']]) * dp(50)) + dp(10)
         super().__init__(orientation='vertical', size_hint_y=None, height=content_height, **kwargs)
-
         with self.canvas.before:
             Color(1, 1, 1, 1)
             self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1)
         self.bind(pos=self._update_border, size=self._update_border)
 
-        header_btn = Button(
-            text=f"PLATFORM {platform_label}", 
-            size_hint_y=None, 
-            height=header_h, 
-            bold=True, 
-            font_size='20sp' if is_big else '14sp', 
-            background_normal='', 
-            background_color=(1, 1, 1, 0.15)
-        )
-
+        header_btn = Button(text=f"PLATFORM {platform_label}", size_hint_y=None, height=dp(35), 
+                            bold=True, font_size='14sp', background_normal='', background_color=(1, 1, 1, 0.15))
         if on_click:
             header_btn.bind(on_release=lambda x: on_click(platform_label))
         self.add_widget(header_btn)
@@ -186,18 +144,7 @@ class PlatformWidget(BoxLayout):
             t_str = "NÅ" if mins <= 0 else f"{mins} MIN" if mins < 20 else expected.strftime("%H:%M")
             delayed = abs((expected - aimed).total_seconds()) > 60
             cancelled = c.get("predictionInaccurate", False) or c.get("status") == "cancelled"
-
-            self.add_widget(DepartureRow(
-                c["serviceJourney"]["line"]["publicCode"], 
-                c["destinationDisplay"]["frontText"], 
-                t_str, 
-                aimed.strftime("%H:%M"), 
-                delayed, 
-                cancelled, 
-                mins, 
-                c["serviceJourney"]["transportMode"],
-                is_big=is_big
-            ))
+            self.add_widget(DepartureRow(c["serviceJourney"]["line"]["publicCode"], c["destinationDisplay"]["frontText"], t_str, aimed.strftime("%H:%M"), delayed, cancelled, mins, c["serviceJourney"]["transportMode"]))
 
     def _update_border(self, instance, value): self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
 
@@ -297,8 +244,6 @@ class MainScreen(Screen):
     def update_ui(self, calls):
         self.stop_name.text = store.cfg['stop_name'].upper()
         self.board_grid.clear_widgets()
-        
-        is_single = self.filtered_quay is not None
         self.board_grid.cols = 2 if not self.filtered_quay else 1
         
         grouped = {}
@@ -314,12 +259,7 @@ class MainScreen(Screen):
                 grouped.setdefault(p_label, []).append(c)
 
         for p_label in sorted(grouped.keys()):
-            self.board_grid.add_widget(PlatformWidget(
-                p_label,
-                grouped[p_label],
-                on_click=self.filter_to_quay,
-                is_big=is_single
-            ))
+            self.board_grid.add_widget(PlatformWidget(p_label, grouped[p_label], on_click=self.filter_to_quay))
 
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
