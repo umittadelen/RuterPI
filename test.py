@@ -29,7 +29,6 @@ def get_cpu_temp():
 class DataStore:
     def __init__(self):
         self.cfg = self.load_config()
-        self.departures = []
 
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
@@ -44,54 +43,86 @@ class DataStore:
 
 store = DataStore()
 
-# --- UI COMPONENTS ---
-
 class DepartureRow(BoxLayout):
     def __init__(self, line, dest, time_str, aimed_str, is_delayed, **kwargs):
-        super().__init__(orientation='horizontal', size_hint_y=None, height=dp(60), padding=[10, 5], spacing=15, **kwargs)
+        super().__init__(orientation='horizontal', size_hint_y=None, height=dp(50), spacing=dp(10), **kwargs)
         
         # Line Pill
         color = LINE_COLORS.get(line, (0.3, 0.3, 0.3, 1))
-        pill_box = BoxLayout(size_hint_x=None, width=dp(55))
-        with pill_box.canvas.before:
+        pill_wrapper = BoxLayout(size_hint_x=None, width=dp(50), padding=[0, dp(5)])
+        with pill_wrapper.canvas.before:
             Color(*color)
-            RoundedRectangle(pos=pill_box.pos, size=(dp(50), dp(35)), radius=[5])
+            self.rect = RoundedRectangle(pos=pill_wrapper.pos, size=pill_wrapper.size, radius=[dp(5)])
+        pill_wrapper.bind(pos=self._update_rect, size=self._update_rect)
         
-        pill_box.add_widget(Label(text=line, bold=True, font_size='18sp', halign='center'))
-        self.add_widget(pill_box)
+        pill_wrapper.add_widget(Label(text=line, bold=True, font_size='16sp'))
+        self.add_widget(pill_wrapper)
 
         # Destination
-        self.add_widget(Label(text=dest.upper(), font_size='20sp', halign='left', text_size=(None, None), shorten=True, shorten_from='right'))
+        self.add_widget(Label(text=dest.upper(), font_size='18sp', halign='left', text_size=(None, None), shorten=True))
 
-        # Time Column
-        time_box = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(100))
-        time_label = Label(text=time_str, font_size='22sp', bold=True, halign='right')
-        time_box.add_widget(time_label)
-        
+        # Time
+        time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(90))
+        time_col.add_widget(Label(text=time_str, font_size='20sp', bold=True, halign='right'))
         if is_delayed:
-            aimed_label = Label(text=aimed_str, font_size='14sp', color=(1, 1, 1, 0.6), halign='right')
-            # Strikethrough effect via canvas
-            with aimed_label.canvas:
-                Color(1, 1, 1, 0.5)
-                Line(points=[aimed_label.center_x - 20, aimed_label.center_y, aimed_label.center_x + 20, aimed_label.center_y], width=1)
-            time_box.add_widget(aimed_label)
-            
-        self.add_widget(time_box)
+            time_col.add_widget(Label(text=aimed_str, font_size='12sp', color=(1, 1, 1, 0.5), strikethrough=True))
+        
+        self.add_widget(time_col)
+
+    def _update_rect(self, instance, value):
+        self.rect.pos = instance.pos
+        self.rect.size = instance.size
 
 class MainScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.layout = BoxLayout(orientation='vertical')
+        
+        # Header
+        self.header = BoxLayout(size_hint_y=None, height=dp(60), padding=[dp(15), 0])
+        with self.header.canvas.after:
+            Color(1, 1, 1, 0.3)
+            self.line = Line(points=[0, 0, 800, 0], width=1)
+        self.header.bind(size=self._update_line)
+
+        self.stop_label = Label(text="LOADING...", font_size='22sp', bold=True, size_hint_x=0.4, halign='left')
+        self.clock_label = Label(text="00:00", font_size='28sp', bold=True, size_hint_x=0.2)
+        
+        meta_box = BoxLayout(size_hint_x=0.4, spacing=dp(10), padding=[0, dp(10)])
+        self.temp_label = Label(text="--°C", color=(0.7, 0.7, 0.7, 1))
+        self.settings_btn = Button(text="[color=ffffff]SETTINGS[/color]", markup=True, background_color=(0.2, 0.2, 0.2, 1))
+        
+        meta_box.add_widget(self.temp_label)
+        meta_box.add_widget(self.settings_btn)
+        
+        self.header.add_widget(self.stop_label)
+        self.header.add_widget(self.clock_label)
+        self.header.add_widget(meta_box)
+        
+        # Board Grid
+        self.board_grid = GridLayout(cols=2, spacing=dp(20), padding=dp(10))
+        
+        self.layout.add_widget(self.header)
+        self.layout.add_widget(self.board_grid)
+        self.add_widget(self.layout)
+
+    def _update_line(self, instance, value):
+        y = instance.pos[1]
+        self.line.points = [0, y, instance.width, y]
+
     def on_enter(self):
-        self.update_data()
-        Clock.schedule_interval(self.update_clock, 1)
-        Clock.schedule_interval(self.update_data, 15)
+        Clock.schedule_interval(self.update_ui_loop, 1)
+        self.fetch_data()
+        Clock.schedule_interval(lambda dt: self.fetch_data(), 20)
 
-    def update_clock(self, dt):
-        self.ids.clock_label.text = datetime.now().strftime("%H:%M")
-        self.ids.temp_label.text = get_cpu_temp()
+    def update_ui_loop(self, dt):
+        self.clock_label.text = datetime.now().strftime("%H:%M")
+        self.temp_label.text = get_cpu_temp()
 
-    def update_data(self, *args):
-        threading.Thread(target=self.fetch_entur_data).start()
+    def fetch_data(self):
+        threading.Thread(target=self._query_entur, daemon=True).start()
 
-    def fetch_entur_data(self):
+    def _query_entur(self):
         query = f"""
         {{
           stopPlace(id: "{store.cfg['stop_id']}") {{
@@ -109,17 +140,14 @@ class MainScreen(Screen):
             r = requests.post("https://api.entur.io/journey-planner/v3/graphql",
                 headers={"ET-Client-Name": "raspi-board-kivy", "Content-Type": "application/json"},
                 json={"query": query}, timeout=5)
-            calls = r.json()["data"]["stopPlace"]["estimatedCalls"]
-            Clock.schedule_once(lambda dt: self.render_board(calls))
-        except Exception as e:
-            print(f"Fetch error: {e}")
+            data = r.json()["data"]["stopPlace"]["estimatedCalls"]
+            Clock.schedule_once(lambda dt: self.render_departures(data))
+        except: pass
 
-    def render_board(self, calls):
-        self.ids.stop_name.text = store.cfg['stop_name'].upper()
-        grid = self.ids.board_grid
-        grid.clear_widgets()
+    def render_departures(self, calls):
+        self.stop_label.text = store.cfg['stop_name'].upper()
+        self.board_grid.clear_widgets()
         
-        # Group by quay
         grouped = {}
         now = datetime.now(timezone.utc)
         for c in calls:
@@ -128,120 +156,82 @@ class MainScreen(Screen):
             if mins < 0 or mins > 60: continue
             
             q_id = c.get("quay", {}).get("id", "??").split(":")[-1]
-            entries = grouped.setdefault(q_id, [])
-            if len(entries) < store.cfg["max_per_quay"]:
-                entries.append(c)
+            grouped.setdefault(q_id, []).append(c)
 
-        # Draw columns
-        for q_id in sorted(grouped.keys()):
-            quay_col = BoxLayout(orientation='vertical', size_hint_x=0.5, padding=5)
-            quay_col.add_widget(Label(text=f"PLATFORM {q_id}", size_hint_y=None, height=dp(30), bold=True, color=(1,1,1,0.8)))
+        for q_id in sorted(grouped.keys())[:2]: # Max 2 platforms for the 7" screen width
+            container = BoxLayout(orientation='vertical', spacing=dp(2))
+            container.add_widget(Label(text=f"PLATFORM {q_id}", size_hint_y=None, height=dp(25), color=(1,1,1,0.6), bold=True, font_size='14sp'))
             
-            for c in grouped[q_id]:
+            for c in grouped[q_id][:store.cfg['max_per_quay']]:
                 expected = datetime.fromisoformat(c["expectedDepartureTime"].replace("Z", "+00:00"))
                 aimed = datetime.fromisoformat(c["aimedDepartureTime"].replace("Z", "+00:00"))
                 mins = int((expected - now).total_seconds() / 60)
                 
-                time_str = "NÅ" if mins == 0 else f"{mins} MIN" if mins < 20 else expected.strftime("%H:%M")
-                is_delayed = abs((expected - aimed).total_seconds()) > 60
+                t_str = "NÅ" if mins == 0 else f"{mins} MIN" if mins < 20 else expected.strftime("%H:%M")
+                delayed = abs((expected - aimed).total_seconds()) > 60
                 
-                quay_col.add_widget(DepartureRow(
-                    c["serviceJourney"]["line"]["publicCode"],
-                    c["destinationDisplay"]["frontText"],
-                    time_str,
-                    aimed.strftime("%H:%M"),
-                    is_delayed
-                ))
-            grid.add_widget(quay_col)
+                container.add_widget(DepartureRow(c["serviceJourney"]["line"]["publicCode"], c["destinationDisplay"]["frontText"], t_str, aimed.strftime("%H:%M"), delayed))
+            self.board_grid.add_widget(container)
 
 class SettingsScreen(Screen):
-    def on_pre_enter(self):
-        self.ids.search_input.text = ""
-        self.ids.results_list.clear_widgets()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(10))
+        
+        layout.add_widget(Label(text="SEARCH FOR STOP", font_size='24sp', size_hint_y=None, height=dp(40)))
+        
+        self.search_input = TextInput(multiline=False, font_size='20sp', size_hint_y=None, height=dp(50))
+        self.search_input.bind(text=self.on_search_text)
+        layout.add_widget(self.search_input)
+        
+        self.results_list = GridLayout(cols=1, size_hint_y=None, spacing=dp(5))
+        self.results_list.bind(minimum_height=self.results_list.setter('height'))
+        
+        scroll = ScrollView(size_hint=(1, 1))
+        scroll.add_widget(self.results_list)
+        layout.add_widget(scroll)
+        
+        self.back_btn = Button(text="CANCEL", size_hint_y=None, height=dp(50))
+        layout.add_widget(self.back_btn)
+        self.add_widget(layout)
 
-    def search_stop(self, text):
-        if len(text) < 3: return
-        def run_search():
-            try:
-                res = requests.get(f"https://api.entur.io/geocoder/v1/autocomplete?text={text}&layers=venue&size=5").json()
-                Clock.schedule_once(lambda dt: self.display_results(res.get('features', [])))
-            except: pass
-        threading.Thread(target=run_search).start()
+    def on_search_text(self, instance, value):
+        if len(value) > 2:
+            threading.Thread(target=self._do_search, args=(value,), daemon=True).start()
 
-    def display_results(self, features):
-        self.ids.results_list.clear_widgets()
+    def _do_search(self, query):
+        try:
+            res = requests.get(f"https://api.entur.io/geocoder/v1/autocomplete?text={query}&layers=venue&size=5").json()
+            Clock.schedule_once(lambda dt: self._update_results(res.get('features', [])))
+        except: pass
+
+    def _update_results(self, features):
+        self.results_list.clear_widgets()
         for f in features:
-            btn = Button(text=f"{f['properties']['name']} ({f['properties'].get('locality','')})", 
-                         size_hint_y=None, height=dp(60), background_color=(0.2,0.2,0.2,1))
-            btn.bind(on_release=lambda x, f=f: self.select_stop(f))
-            self.ids.results_list.add_widget(btn)
+            name = f['properties']['name']
+            city = f['properties'].get('locality', '')
+            sid = f['properties']['id']
+            btn = Button(text=f"{name} ({city})", size_hint_y=None, height=dp(50), background_color=(0.3, 0.3, 0.3, 1))
+            btn.bind(on_release=lambda x, n=name, i=sid: self.save_and_exit(n, i))
+            self.results_list.add_widget(btn)
 
-    def select_stop(self, f):
-        store.save_config({"stop_id": f['properties']['id'], "stop_name": f['properties']['name']})
+    def save_and_exit(self, name, sid):
+        store.save_config({"stop_id": sid, "stop_name": name})
         self.manager.current = 'main'
 
 class DepartureApp(App):
     def build(self):
-        # Build UI structure in Python to avoid separate .kv file for portability
         sm = ScreenManager()
         
-        # MAIN SCREEN
-        main = MainScreen(name='main')
-        layout = BoxLayout(orientation='vertical')
+        self.main_scr = MainScreen(name='main')
+        self.sett_scr = SettingsScreen(name='settings')
         
-        # Header
-        header = BoxLayout(size_hint_y=None, height=dp(70), padding=[20, 0])
-        with header.canvas.after:
-            Color(1, 1, 1, 1)
-            Line(points=[0, dp(1210), 800, dp(1210)], width=1.5) # Resolution adjusted for Pi 7" (800x480)
-
-        header.add_widget(Label(id='stop_name', text="---", font_size='24sp', bold=True, halign='left'))
-        header.add_widget(Label(id='clock_label', text="00:00", font_size='32sp', bold=True))
+        # Manual binding of buttons (since we aren't using IDs in constructors)
+        self.main_scr.settings_btn.bind(on_release=lambda x: setattr(sm, 'current', 'settings'))
+        self.sett_scr.back_btn.bind(on_release=lambda x: setattr(sm, 'current', 'main'))
         
-        actions = BoxLayout(size_hint_x=None, width=dp(180), spacing=10)
-        actions.add_widget(Label(id='temp_label', text="--°C", color=(0.8, 0.8, 0.8, 1)))
-        
-        settings_btn = Button(text="SET", size_hint=(None, None), size=(dp(50), dp(50)), pos_hint={'center_y': .5})
-        settings_btn.bind(on_release=lambda x: setattr(sm, 'current', 'settings'))
-        actions.add_widget(settings_btn)
-        
-        header.add_widget(actions)
-        layout.add_widget(header)
-        
-        # Board
-        board = GridLayout(id='board_grid', cols=2, padding=10, spacing=20)
-        layout.add_widget(board)
-        
-        main.add_widget(layout)
-        main.ids = { 'stop_name': main.ids.get('stop_name', header.children[2]), 
-                     'clock_label': header.children[1],
-                     'temp_label': actions.children[1],
-                     'board_grid': board }
-
-        # SETTINGS SCREEN
-        sett = SettingsScreen(name='settings')
-        s_layout = BoxLayout(orientation='vertical', padding=40, spacing=20)
-        s_layout.add_widget(Label(text="SEARCH STOP", font_size='30sp', size_hint_y=None, height=dp(50)))
-        
-        search_input = TextInput(multiline=False, font_size='24sp', size_hint_y=None, height=dp(60))
-        search_input.bind(text=lambda instance, value: sett.search_stop(value))
-        s_layout.add_widget(search_input)
-        
-        results_scroll = ScrollView()
-        results_list = GridLayout(cols=1, size_hint_y=None, spacing=5)
-        results_list.bind(minimum_height=results_list.setter('height'))
-        results_scroll.add_widget(results_list)
-        s_layout.add_widget(results_scroll)
-        
-        back_btn = Button(text="BACK / CANCEL", size_hint_y=None, height=dp(60))
-        back_btn.bind(on_release=lambda x: setattr(sm, 'current', 'main'))
-        s_layout.add_widget(back_btn)
-        
-        sett.add_widget(s_layout)
-        sett.ids = {'search_input': search_input, 'results_list': results_list}
-
-        sm.add_widget(main)
-        sm.add_widget(sett)
+        sm.add_widget(self.main_scr)
+        sm.add_widget(self.sett_scr)
         return sm
 
 if __name__ == "__main__":
