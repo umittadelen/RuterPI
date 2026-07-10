@@ -29,9 +29,12 @@ from kivy.core.window import Window
 
 from kivy.uix.vkeyboard import VKeyboard
 
-VKeyboard.height = dp(220) 
-VKeyboard.key_margin = dp(4)
-VKeyboard.font_size = '20sp'
+Builder.load_string('''
+<VKeyboard>:
+    height: dp(240)
+    key_margin: dp(4)
+    font_size: '20sp'
+''')
 
 # --- 2. CONFIG & HELPERS ---
 CONFIG_FILE = "config.json"
