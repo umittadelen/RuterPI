@@ -2,7 +2,6 @@ import os
 import json
 import requests
 import threading
-import urllib3
 from datetime import datetime, timezone
 
 # --- 1. KIVY CONFIGURATION ---
@@ -27,9 +26,6 @@ from kivy.clock import Clock
 from kivy.graphics import Color, RoundedRectangle, Line, Rectangle
 from kivy.metrics import dp
 from kivy.core.window import Window
-
-# Disable SSL Warnings if certificates are messy on the Pi
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- 2. CONFIG & HELPERS ---
 CONFIG_FILE = "config.json"
@@ -73,13 +69,14 @@ store = DataStore()
 
 class DepartureRow(BoxLayout):
     def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, is_single, **kwargs):
-        self.row_h = dp(90) if is_single else dp(60)
-        self.font_dest = '30sp' if is_single else '18sp'
-        self.font_time = '36sp' if is_single else '22sp'
+        # Configuration for sizing
+        self.row_h = dp(85) if is_single else dp(55)
+        self.font_dest = '28sp' if is_single else '17sp'
+        self.font_time = '32sp' if is_single else '20sp'
         self.font_line = '26sp' if is_single else '16sp'
-        self.pill_w = dp(100) if is_single else dp(60)
-        self.pill_h = dp(60) if is_single else dp(40)
-        self.time_w = dp(180) if is_single else dp(110)
+        self.pill_w = dp(90) if is_single else dp(55)
+        self.pill_h = dp(55) if is_single else dp(34)
+        self.time_w = dp(160) if is_single else dp(95)
 
         super().__init__(orientation='horizontal', size_hint_y=None, height=self.row_h, padding=[dp(10), 0], **kwargs)
         
@@ -90,6 +87,7 @@ class DepartureRow(BoxLayout):
             self.border = Rectangle(pos=(self.x, self.y), size=(self.width, dp(1)))
         self.bind(pos=self._update_graphics, size=self._update_graphics)
 
+        # 1. Line Pill Container
         pill_box = BoxLayout(size_hint_x=None, width=self.pill_w)
         line_color = get_line_color(line, mode)
         with pill_box.canvas.before:
@@ -97,48 +95,69 @@ class DepartureRow(BoxLayout):
             self.pill_rect = RoundedRectangle(size=(self.pill_w - dp(10), self.pill_h), radius=[dp(6)])
         pill_box.bind(pos=self._update_pill, size=self._update_pill)
         
-        lbl_line = Label(text=line, bold=True, font_size=self.font_line, halign='center', valign='middle')
-        lbl_line.bind(size=lambda i, v: setattr(i, 'text_size', v))
-        pill_box.add_widget(lbl_line)
+        # Line Number Label
+        self.line_lbl = Label(text=line, bold=True, font_size=self.font_line, halign='center', valign='middle')
+        self.line_lbl.bind(size=self._update_text_size)
+        pill_box.add_widget(self.line_lbl)
         self.add_widget(pill_box)
 
-        self.dest_label = Label(text=dest.upper(), font_size=self.font_dest, halign='left', valign='middle', shorten=True, shorten_from='right', padding=[dp(15), 0])
-        self.dest_label.bind(size=lambda i, v: setattr(i, 'text_size', v))
+        # 2. Destination Label
+        self.dest_label = Label(text=dest.upper(), font_size=self.font_dest, halign='left', valign='middle', 
+                               shorten=True, shorten_from='right', padding=[dp(15), 0])
+        self.dest_label.bind(size=self._update_text_size)
         self.add_widget(self.dest_label)
 
+        # 3. Time Column
         time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=self.time_w)
+        
         if is_cancelled:
-            lbl_time = Label(text="INNSTILT", font_size='18sp' if is_single else '14sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right', valign='middle')
+            self.time_lbl = Label(text="INNSTILT", font_size='18sp' if is_single else '14sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right', valign='middle')
         else:
-            lbl_time = Label(text=time_str, font_size=self.font_time, bold=True, halign='right', valign='middle')
-        lbl_time.bind(size=lambda i, v: setattr(i, 'text_size', v))
-        time_col.add_widget(lbl_time)
+            self.time_lbl = Label(text=time_str, font_size=self.font_time, bold=True, halign='right', valign='middle')
+        
+        self.time_lbl.bind(size=self._update_text_size)
+        time_col.add_widget(self.time_lbl)
         
         if is_delayed and not is_cancelled:
-            lbl_aimed = Label(text=aimed_str, font_size='16sp' if is_single else '12sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right', valign='top', size_hint_y=0.4)
-            lbl_aimed.bind(size=lambda i, v: setattr(i, 'text_size', v))
-            time_col.add_widget(lbl_aimed)
+            self.aimed_lbl = Label(text=aimed_str, font_size='14sp' if is_single else '11sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right', valign='top', size_hint_y=0.4)
+            self.aimed_lbl.bind(size=self._update_text_size)
+            time_col.add_widget(self.aimed_lbl)
+            
         self.add_widget(time_col)
 
     def _update_graphics(self, instance, value):
-        self.bg_rect.pos = instance.pos; self.bg_rect.size = instance.size
-        self.border.pos = instance.pos; self.border.size = (instance.width, dp(1))
+        self.bg_rect.pos = instance.pos
+        self.bg_rect.size = instance.size
+        self.border.pos = instance.pos
+        self.border.size = (instance.width, dp(1))
+
+    def _update_text_size(self, instance, value):
+        instance.text_size = value
+
     def _update_pill(self, instance, value):
+        # Perfectly center the pill rectangle inside the pill_box
         rw, rh = self.pill_rect.size
         self.pill_rect.pos = (instance.x + (instance.width - rw)/2, instance.y + (instance.height - rh)/2)
 
 class PlatformWidget(BoxLayout):
     def __init__(self, platform_label, calls, is_single, on_click=None, **kwargs):
-        row_h = dp(90) if is_single else dp(60)
-        header_h = dp(55) if is_single else dp(40)
+        row_h = dp(85) if is_single else dp(55)
+        header_h = dp(50) if is_single else dp(35)
         content_height = header_h + (len(calls[:store.cfg['max_per_quay']]) * row_h) + dp(15)
+        
         super().__init__(orientation='vertical', size_hint_y=None, height=content_height, **kwargs)
         with self.canvas.before:
-            Color(1, 1, 1, 1); self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1)
+            Color(1, 1, 1, 1)
+            self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1)
         self.bind(pos=self._update_border, size=self._update_border)
-        header_btn = Button(text=f"PLATFORM {platform_label}", size_hint_y=None, height=header_h, bold=True, font_size='22sp' if is_single else '15sp', background_normal='', background_color=(1, 1, 1, 0.15))
-        if on_click: header_btn.bind(on_release=lambda x: on_click(platform_label))
+
+        header_btn = Button(text=f"PLATFORM {platform_label}", size_hint_y=None, height=header_h, 
+                            bold=True, font_size='20sp' if is_single else '14sp', 
+                            background_normal='', background_color=(1, 1, 1, 0.15))
+        if on_click:
+            header_btn.bind(on_release=lambda x: on_click(platform_label))
         self.add_widget(header_btn)
+
         now = datetime.now(timezone.utc)
         for c in calls[:store.cfg['max_per_quay']]:
             expected = datetime.fromisoformat(c["expectedDepartureTime"].replace("Z", "+00:00"))
@@ -147,8 +166,15 @@ class PlatformWidget(BoxLayout):
             t_str = "NÅ" if mins <= 0 else f"{mins} MIN" if mins < 20 else expected.strftime("%H:%M")
             delayed = abs((expected - aimed).total_seconds()) > 60
             cancelled = c.get("predictionInaccurate", False) or c.get("status") == "cancelled"
-            self.add_widget(DepartureRow(c["serviceJourney"]["line"]["publicCode"], c["destinationDisplay"]["frontText"], t_str, aimed.strftime("%H:%M"), delayed, cancelled, mins, c["serviceJourney"]["transportMode"], is_single))
-    def _update_border(self, instance, value): self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
+            
+            self.add_widget(DepartureRow(
+                c["serviceJourney"]["line"]["publicCode"], c["destinationDisplay"]["frontText"], 
+                t_str, aimed.strftime("%H:%M"), delayed, cancelled, mins, 
+                c["serviceJourney"]["transportMode"], is_single
+            ))
+
+    def _update_border(self, instance, value): 
+        self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
 
 # --- 4. SCREENS ---
 
@@ -157,81 +183,100 @@ class MainScreen(Screen):
         super().__init__(**kwargs)
         self.filtered_quay = None
         self.last_data = []
-        self.session = requests.Session() # Persistent session for RPi stability
-        
         self.layout = BoxLayout(orientation='vertical')
+        
+        # Header
         header = BoxLayout(size_hint_y=None, height=dp(70), padding=[dp(15), 0], spacing=dp(10))
         with header.canvas.after:
-            Color(1, 1, 1, 1); self.line = Rectangle(pos=(0, 0), size=(Window.width, dp(2)))
+            Color(1, 1, 1, 1)
+            self.line = Rectangle(pos=(0, 0), size=(Window.width, dp(2)))
         header.bind(pos=self._update_line, size=self._update_line)
-        self.stop_name = Label(text="---", font_size='22sp', bold=True, halign='left', valign='middle')
-        self.stop_name.bind(size=lambda i, v: setattr(i, 'text_size', v))
-        self.clock = Label(text="00:00", font_size='36sp', bold=True, size_hint_x=0.2, halign='center', valign='middle')
-        self.clock.bind(size=lambda i, v: setattr(i, 'text_size', v))
+
+        self.stop_name = Label(text="---", font_size='22sp', bold=True, halign='left', size_hint_x=0.4)
+        self.clock = Label(text="00:00", font_size='34sp', bold=True, size_hint_x=0.2)
+        
         self.actions = BoxLayout(size_hint_x=0.4, spacing=dp(10), padding=[0, dp(10)])
-        self.temp = Label(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.4, halign='right', valign='middle')
-        self.temp.bind(size=lambda i, v: setattr(i, 'text_size', v))
+        self.temp = Label(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.4)
         self.btn_back_all = Button(text="BACK", bold=True, background_color=(0, 0.4, 0.8, 1), size_hint_x=0.6)
         self.btn_back_all.bind(on_release=self.reset_filter)
         self.btn_cfg = Button(text="CONFIG", bold=True, background_color=(0.2, 0.2, 0.2, 1))
         self.btn_exit = Button(text="X", bold=True, size_hint_x=None, width=dp(50), background_color=(0.6, 0.1, 0.1, 1))
-        self.actions.add_widget(self.temp); self.actions.add_widget(self.btn_cfg); self.actions.add_widget(self.btn_exit)
-        header.add_widget(self.stop_name); header.add_widget(self.clock); header.add_widget(self.actions)
+        
+        self.actions.add_widget(self.temp)
+        self.actions.add_widget(self.btn_cfg)
+        self.actions.add_widget(self.btn_exit)
+        
+        header.add_widget(self.stop_name)
+        header.add_widget(self.clock)
+        header.add_widget(self.actions)
+        
         self.scroll = ScrollView(do_scroll_x=False, do_scroll_y=True, bar_width=dp(5))
         self.board_grid = GridLayout(cols=2, size_hint_y=None, spacing=dp(10), padding=dp(5))
         self.board_grid.bind(minimum_height=self.board_grid.setter('height'))
+        
         self.scroll.add_widget(self.board_grid)
-        self.layout.add_widget(header); self.layout.add_widget(self.scroll); self.add_widget(self.layout)
+        self.layout.add_widget(header)
+        self.layout.add_widget(self.scroll)
+        self.add_widget(self.layout)
 
     def _update_line(self, instance, value): self.line.pos = (instance.x, instance.y); self.line.size = (instance.width, dp(2))
+
     def reset_filter(self, *args):
         self.filtered_quay = None
         if self.btn_back_all in self.actions.children: self.actions.remove_widget(self.btn_back_all)
         self.update_ui(self.last_data)
+
     def filter_to_quay(self, quay_label):
         self.filtered_quay = quay_label
-        if self.btn_back_all not in self.actions.children: self.actions.add_widget(self.btn_back_all, index=1)
+        if self.btn_back_all not in self.actions.children: self.actions.add_widget(self.btn_back_all, index=2)
         self.update_ui(self.last_data)
+
     def on_enter(self):
-        self.stop_name.text = store.cfg['stop_name'].upper()
         Clock.schedule_interval(self.tick, 1)
         self.fetch_data()
         Clock.schedule_interval(lambda dt: self.fetch_data(), 20)
+
     def tick(self, dt): self.clock.text = datetime.now().strftime("%H:%M"); self.temp.text = get_cpu_temp()
     def fetch_data(self): threading.Thread(target=self._query, daemon=True).start()
 
     def _query(self):
-        url = "https://api.entur.io/journey-planner/v3/graphql"
-        headers = {
-            "ET-Client-Name": "raspi-ruter-board",
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (RaspberryPi; Linux armv7l) Kivy/2.1.0"
-        }
-        q = f'''{{ stopPlace(id: "{store.cfg['stop_id']}") {{ estimatedCalls(numberOfDepartures: 50) {{ aimedDepartureTime expectedDepartureTime predictionInaccurate status quay {{ id publicCode name }} destinationDisplay {{ frontText }} serviceJourney {{ transportMode line {{ publicCode }} }} }} }} }}'''
+        q = f'''{{
+          stopPlace(id: "{store.cfg['stop_id']}") {{
+            estimatedCalls(numberOfDepartures: 50) {{
+              aimedDepartureTime
+              expectedDepartureTime
+              predictionInaccurate
+              quay {{ id publicCode name }}
+              destinationDisplay {{ frontText }}
+              serviceJourney {{ transportMode line {{ publicCode }} }}
+            }}
+          }}
+        }}'''
         try:
-            # verify=False handles common Pi SSL cert issues, timeout=15 handles slow DNS
-            r = self.session.post(url, headers=headers, json={"query": q}, timeout=15, verify=False)
-            if r.status_code == 200:
-                self.last_data = r.json()["data"]["stopPlace"]["estimatedCalls"]
-                Clock.schedule_once(lambda dt: self.update_ui(self.last_data))
-            else: print(f"API Error: {r.status_code}")
-        except Exception as e: print(f"Request failed: {e}")
+            r = requests.post("https://api.entur.io/journey-planner/v3/graphql", headers={"ET-Client-Name": "raspi-kivy"}, json={"query": q}, timeout=5)
+            self.last_data = r.json()["data"]["stopPlace"]["estimatedCalls"]
+            Clock.schedule_once(lambda dt: self.update_ui(self.last_data))
+        except: pass
 
     def update_ui(self, calls):
         self.stop_name.text = store.cfg['stop_name'].upper()
         self.board_grid.clear_widgets()
+        
         is_single = self.filtered_quay is not None
         self.board_grid.cols = 1 if is_single else 2
+        
         grouped = {}
         now = datetime.now(timezone.utc)
         for c in calls:
             expected = datetime.fromisoformat(c["expectedDepartureTime"].replace("Z", "+00:00"))
-            if -120 <= (expected - now).total_seconds() <= 3600:
+            if 0 <= (expected - now).total_seconds() <= 3600:
                 q_info = c.get("quay", {})
                 p_label = q_info.get("publicCode") or q_info.get("name", "").replace(store.cfg['stop_name'], "").strip()
                 if not p_label or len(p_label) > 5: p_label = q_info.get("id", "??").split(":")[-1]
+                
                 if self.filtered_quay and p_label != self.filtered_quay: continue
                 grouped.setdefault(p_label, []).append(c)
+
         for p_label in sorted(grouped.keys()):
             self.board_grid.add_widget(PlatformWidget(p_label, grouped[p_label], is_single=is_single, on_click=self.filter_to_quay))
 
@@ -253,7 +298,7 @@ class SettingsScreen(Screen):
         if len(value) > 2: threading.Thread(target=self._do_search, args=(value,), daemon=True).start()
     def _do_search(self, query):
         try:
-            r = requests.get(f"https://api.entur.io/geocoder/v1/autocomplete?text={query}&layers=venue&size=6", timeout=10, verify=False).json()
+            r = requests.get(f"https://api.entur.io/geocoder/v1/autocomplete?text={query}&layers=venue&size=6").json()
             Clock.schedule_once(lambda dt: self._show(r.get('features', [])))
         except: pass
     def _show(self, features):
