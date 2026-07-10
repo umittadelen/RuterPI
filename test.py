@@ -23,7 +23,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
 from kivy.uix.textinput import TextInput
 from kivy.clock import Clock
-from kivy.graphics import Color, RoundedRectangle, Line, Rectangle
+from kivy.graphics import Color, RoundedRectangle, Line, Rectangle, RenderContext
 from kivy.metrics import dp
 from kivy.core.window import Window
 
@@ -50,6 +50,22 @@ def get_cpu_temp():
         with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
             return f"{int(f.read()) / 1000:.1f}°C"
     except: return "??°C"
+
+class PixelLabel(Label):
+    def __init__(self, **kwargs):
+        # 1. Force font hinting to 'mono' to stop anti-aliasing at the engine level
+        kwargs.setdefault('font_hinting', 'mono')
+        kwargs.setdefault('font_name', './fonts/MS PGothic.ttf') 
+        super().__init__(**kwargs)
+        # Bind to texture change to reset filtering
+        self.bind(texture=self._update_texture_filters)
+
+    def _update_texture_filters(self, instance, texture):
+        if texture:
+            # 2. Set 'nearest' filtering to prevent blurring when the font 
+            # doesn't perfectly align with the pixel grid
+            texture.min_filter = 'nearest'
+            texture.mag_filter = 'nearest'
 
 class DataStore:
     def __init__(self): self.cfg = self.load_config()
@@ -83,20 +99,20 @@ class DepartureRow(BoxLayout):
             Color(*line_color)
             self.pill_rect = RoundedRectangle(pos=pill_box.pos, size=(dp(45), dp(32)), radius=[dp(4)])
         pill_box.bind(pos=self._update_pill)
-        pill_box.add_widget(Label(text=line, bold=True, font_size='15sp'))
+        pill_box.add_widget(PixelLabel(text=line, bold=True, font_size='15sp'))
         self.add_widget(pill_box)
 
-        self.dest_label = Label(text=dest.upper(), font_size='16sp', halign='left', valign='middle', shorten=True, shorten_from='right', padding=[dp(10), 0])
+        self.dest_label = PixelLabel(text=dest.upper(), font_size='16sp', halign='left', valign='middle', shorten=True, shorten_from='right', padding=[dp(10), 0])
         self.dest_label.bind(size=self._update_text_size)
         self.add_widget(self.dest_label)
 
         time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(95), padding=[0, dp(5)])
         if is_cancelled:
-            time_col.add_widget(Label(text="CANCELLED", font_size='16sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right'))
+            time_col.add_widget(PixelLabel(text="CANCELLED", font_size='16sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right'))
         else:
-            time_col.add_widget(Label(text=time_str, font_size='19sp', bold=True, halign='right'))
+            time_col.add_widget(PixelLabel(text=time_str, font_size='19sp', bold=True, halign='right'))
             if is_delayed:
-                time_col.add_widget(Label(text=aimed_str, font_size='14sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
+                time_col.add_widget(PixelLabel(text=aimed_str, font_size='14sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
         self.add_widget(time_col)
 
     def _update_graphics(self, instance, value):
