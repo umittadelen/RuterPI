@@ -27,10 +27,47 @@ from kivy.graphics import Color, RoundedRectangle, Line, Rectangle
 from kivy.metrics import dp
 from kivy.core.window import Window
 
-# --- 2. CONFIG & HELPERS ---
+# --- 2. CONFIG & COLOR LOGIC ---
 CONFIG_FILE = "config.json"
 DEFAULT_CONFIG = {"stop_id": "NSR:StopPlace:58309", "stop_name": "Grefsen stadion", "max_per_quay": 6}
-LINE_COLORS = { "25": (0.42, 0.18, 0.63, 1), "26": (0, 0.19, 0.53, 1), "31": (0.91, 0, 0.11, 1), "60": (0, 0.48, 0.25, 1) }
+
+def get_line_color(line, mode):
+    """Returns normalized RGB colors matching Ruter/Entur standards"""
+    mode = mode.lower()
+    
+    # Metro (T-bane) specific colors
+    if mode == 'metro':
+        metro_colors = {
+            "1": (0.92, 0.44, 0.05, 1), # Orange
+            "2": (0.90, 0.00, 0.00, 1), # Red
+            "3": (0.66, 0.00, 0.42, 1), # Purple
+            "4": (0.00, 0.27, 0.58, 1), # Dark Blue
+            "5": (0.00, 0.56, 0.23, 1), # Green
+        }
+        return metro_colors.get(line, (0.4, 0.4, 0.4, 1))
+
+    # Tram (Trikk) - Standard Blue
+    if mode == 'tram':
+        return (0.00, 0.35, 0.70, 1)
+
+    # Rail (Train) - Standard Rail Blue
+    if mode == 'rail':
+        return (0.00, 0.20, 0.40, 1)
+
+    # Water (Ferry) - Standard Light Blue
+    if mode == 'water':
+        return (0.00, 0.65, 0.85, 1)
+
+    # Bus logic
+    if mode == 'bus':
+        # Regional/Express buses are green (usually 3 digits or starting with high numbers)
+        if len(line) >= 3 or line.startswith(('1', '2', '3', '4', '5')):
+            if len(line) == 2: # Exception for some city buses
+                return (0.90, 0.00, 0.00, 1)
+            return (0.00, 0.55, 0.25, 1) # Regional Green
+        return (0.90, 0.00, 0.00, 1) # City Bus Red
+
+    return (0.3, 0.3, 0.3, 1) # Default Grey
 
 def get_cpu_temp():
     try:
@@ -55,20 +92,20 @@ store = DataStore()
 # --- 3. UI COMPONENTS ---
 
 class DepartureRow(BoxLayout):
-    def __init__(self, line, dest, time_str, aimed_str, is_delayed, mins, **kwargs):
+    def __init__(self, line, dest, time_str, aimed_str, is_delayed, mins, mode, **kwargs):
         super().__init__(orientation='horizontal', size_hint_y=None, height=dp(50), padding=[dp(10), 0], **kwargs)
         with self.canvas.before:
             self.bg_color = Color(0.12, 0.12, 0.12, 1) if mins <= 1 else Color(0, 0, 0, 0)
             self.bg_rect = Rectangle(pos=self.pos, size=self.size)
-            Color(0.25, 0.25, 0.25, 1) # Divider line color
+            Color(0.25, 0.25, 0.25, 1)
             self.border = Rectangle(pos=(self.x, self.y), size=(self.width, dp(1)))
         self.bind(pos=self._update_graphics, size=self._update_graphics)
 
         # 1. Line Pill
         pill_box = BoxLayout(size_hint_x=None, width=dp(50), padding=[0, dp(8)])
-        color = LINE_COLORS.get(line, (0.3, 0.3, 0.3, 1))
+        line_color = get_line_color(line, mode)
         with pill_box.canvas.before:
-            Color(*color)
+            Color(*line_color)
             self.pill_rect = RoundedRectangle(pos=pill_box.pos, size=(dp(45), dp(32)), radius=[dp(4)])
         pill_box.bind(pos=self._update_pill)
         pill_box.add_widget(Label(text=line, bold=True, font_size='15sp'))
@@ -95,12 +132,10 @@ class DepartureRow(BoxLayout):
 
 class PlatformWidget(BoxLayout):
     def __init__(self, platform_label, calls, **kwargs):
-        # Calculate fixed height based on max departures allowed
         content_height = dp(35) + (len(calls[:store.cfg['max_per_quay']]) * dp(50)) + dp(10)
         super().__init__(orientation='vertical', size_hint_y=None, height=content_height, **kwargs)
-        
         with self.canvas.before:
-            Color(1, 1, 1, 1) # White platform border
+            Color(1, 1, 1, 1)
             self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1)
         self.bind(pos=self._update_border, size=self._update_border)
 
@@ -118,7 +153,13 @@ class PlatformWidget(BoxLayout):
             mins = int((expected - now).total_seconds() / 60)
             t_str = "NÅ" if mins <= 0 else f"{mins} MIN" if mins < 20 else expected.strftime("%H:%M")
             delayed = abs((expected - aimed).total_seconds()) > 60
-            self.add_widget(DepartureRow(c["serviceJourney"]["line"]["publicCode"], c["destinationDisplay"]["frontText"], t_str, aimed.strftime("%H:%M"), delayed, mins))
+            mode = c["serviceJourney"]["transportMode"]
+            
+            self.add_widget(DepartureRow(
+                c["serviceJourney"]["line"]["publicCode"], 
+                c["destinationDisplay"]["frontText"], 
+                t_str, aimed.strftime("%H:%M"), delayed, mins, mode
+            ))
 
     def _update_border(self, instance, value): self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
     def _update_h_bg(self, instance, value): self.h_bg.pos = instance.pos; self.h_bg.size = instance.size
@@ -129,8 +170,6 @@ class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.layout = BoxLayout(orientation='vertical')
-        
-        # Header
         header = BoxLayout(size_hint_y=None, height=dp(70), padding=[dp(15), 0], spacing=dp(10))
         with header.canvas.after:
             Color(1, 1, 1, 1)
@@ -147,25 +186,23 @@ class MainScreen(Screen):
         actions.add_widget(self.temp); actions.add_widget(self.btn_cfg); actions.add_widget(self.btn_exit)
         header.add_widget(self.stop_name); header.add_widget(self.clock); header.add_widget(actions)
         
-        # Scroll Area with Fixed 2-Column Grid
         self.scroll = ScrollView(do_scroll_x=False, do_scroll_y=True, bar_width=dp(5))
         self.board_grid = GridLayout(cols=2, size_hint_y=None, spacing=dp(10), padding=dp(5))
         self.board_grid.bind(minimum_height=self.board_grid.setter('height'))
         
         self.scroll.add_widget(self.board_grid)
-        self.layout.add_widget(header)
-        self.layout.add_widget(self.scroll)
+        self.layout.add_widget(header); self.layout.add_widget(self.scroll)
         self.add_widget(self.layout)
 
     def _update_line(self, instance, value): self.line.pos = (instance.x, instance.y); self.line.size = (instance.width, dp(2))
     def on_enter(self):
         Clock.schedule_interval(self.tick, 1)
-        self.fetch_data()
-        Clock.schedule_interval(lambda dt: self.fetch_data(), 15)
+        self.fetch_data(); Clock.schedule_interval(lambda dt: self.fetch_data(), 15)
     def tick(self, dt): self.clock.text = datetime.now().strftime("%H:%M"); self.temp.text = get_cpu_temp()
     def fetch_data(self): threading.Thread(target=self._query, daemon=True).start()
 
     def _query(self):
+        # UPDATED QUERY: Added 'transportMode'
         q = f'''{{
           stopPlace(id: "{store.cfg['stop_id']}") {{
             estimatedCalls(numberOfDepartures: 50) {{
@@ -173,7 +210,10 @@ class MainScreen(Screen):
               expectedDepartureTime
               quay {{ id publicCode name }}
               destinationDisplay {{ frontText }}
-              serviceJourney {{ line {{ publicCode }} }}
+              serviceJourney {{ 
+                transportMode
+                line {{ publicCode }} 
+              }}
             }}
           }}
         }}'''
@@ -197,8 +237,6 @@ class MainScreen(Screen):
                 if not p_label or len(p_label) > 5: p_label = q_info.get("id", "??").split(":")[-1]
                 grouped.setdefault(p_label, []).append(c)
 
-        # Adding each platform directly to the 2-column grid
-        # This keeps the center vertical line consistent for all platforms.
         for p_label in sorted(grouped.keys()):
             self.board_grid.add_widget(PlatformWidget(p_label, grouped[p_label]))
 
