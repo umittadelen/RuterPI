@@ -80,7 +80,7 @@ class DepartureRow(BoxLayout):
             self.border = Line(points=[self.x, self.y, self.right, self.y], width=1)
         self.bind(pos=self._update_border, size=self._update_border)
 
-        # 1. Line Number Pill
+        # 1. Line Number Pill (Fixed width 50dp)
         pill_box = BoxLayout(size_hint_x=None, width=dp(50), padding=[0, dp(8)])
         color = LINE_COLORS.get(line, (0.3, 0.3, 0.3, 1))
         with pill_box.canvas.before:
@@ -90,15 +90,31 @@ class DepartureRow(BoxLayout):
         pill_box.add_widget(Label(text=line, bold=True, font_size='16sp'))
         self.add_widget(pill_box)
 
-        # 2. Destination Display
-        self.add_widget(Label(text=dest.upper(), font_size='18sp', halign='left', text_size=(self.width, None), padding=[dp(10), 0]))
+        # 2. Destination Display (The part we fixed)
+        # We set text_size so it knows where to clip, and valign/halign for alignment
+        self.dest_label = Label(
+            text=dest.upper(), 
+            font_size='17sp', 
+            halign='left', 
+            valign='middle',
+            shorten=True,           # Adds "..." if too long
+            shorten_from='right',
+            padding=[dp(10), 0]
+        )
+        # This binding is the magic: it tells the text box to always match the label size
+        self.dest_label.bind(size=self._update_text_size)
+        self.add_widget(self.dest_label)
 
-        # 3. Time Column
+        # 3. Time Column (Fixed width 90dp)
         time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(90), padding=[0, dp(5)])
         time_col.add_widget(Label(text=time_str, font_size='20sp', bold=True, halign='right'))
         if is_delayed:
             time_col.add_widget(Label(text=aimed_str, font_size='12sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
         self.add_widget(time_col)
+
+    def _update_text_size(self, instance, value):
+        # Update the internal text bounding box to match the label's actual width/height
+        instance.text_size = value
 
     def _update_bg(self, instance, value): self.bg_rect.pos = self.pos; self.bg_rect.size = self.size
     def _update_border(self, instance, value): self.border.points = [self.x, self.y, self.right, self.y]
