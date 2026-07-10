@@ -27,6 +27,15 @@ from kivy.graphics import Color, RoundedRectangle, Line, Rectangle, RenderContex
 from kivy.metrics import dp
 from kivy.core.window import Window
 
+class BigKeyboard(VKeyboard):
+    def __init__(self, **kwargs):
+        super(BigKeyboard, self).__init__(**kwargs)
+        self.height = dp(240)  # Safe way to set height on the instance
+        self.key_margin = dp(4)
+        self.font_size = '20sp'
+
+Window.set_vkeyboard_class(BigKeyboard)
+
 # --- 2. CONFIG & HELPERS ---
 CONFIG_FILE = "config.json"
 DEFAULT_CONFIG = {"stop_id": "NSR:StopPlace:58309", "stop_name": "Grefsen stadion", "max_per_quay": 6}
