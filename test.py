@@ -27,7 +27,7 @@ from kivy.graphics import Color, RoundedRectangle, Line, Rectangle, RenderContex
 from kivy.metrics import dp
 from kivy.core.window import Window
 
-from kivy.uix.vkeyboard import VKeyboard
+from kivy.lang import Builder
 
 Builder.load_string('''
 <VKeyboard>:
