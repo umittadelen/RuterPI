@@ -2,7 +2,7 @@ import os
 import json
 import requests
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # --- 1. KIVY CONFIGURATION ---
 from kivy.config import Config
@@ -56,7 +56,9 @@ class DataStore:
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
             with open(CONFIG_FILE) as f:
-                try: return {**DEFAULT_CONFIG, **json.load(f)}
+                try: 
+                    d = json.load(f)
+                    return {**DEFAULT_CONFIG, **d}
                 except: return DEFAULT_CONFIG
         return DEFAULT_CONFIG
     def save_config(self, data):
@@ -69,14 +71,13 @@ store = DataStore()
 
 class DepartureRow(BoxLayout):
     def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, is_single, **kwargs):
-        # Configuration for sizing
-        self.row_h = dp(85) if is_single else dp(55)
-        self.font_dest = '28sp' if is_single else '17sp'
-        self.font_time = '32sp' if is_single else '20sp'
-        self.font_line = '26sp' if is_single else '16sp'
-        self.pill_w = dp(90) if is_single else dp(55)
-        self.pill_h = dp(55) if is_single else dp(34)
-        self.time_w = dp(160) if is_single else dp(95)
+        self.row_h = dp(88) if is_single else dp(60)
+        self.font_dest = '30sp' if is_single else '18sp'
+        self.font_time = '36sp' if is_single else '22sp'
+        self.font_line = '28sp' if is_single else '16sp'
+        self.pill_w = dp(100) if is_single else dp(62)
+        self.pill_h = dp(62) if is_single else dp(38)
+        self.time_w = dp(180) if is_single else dp(110)
 
         super().__init__(orientation='horizontal', size_hint_y=None, height=self.row_h, padding=[dp(10), 0], **kwargs)
         
@@ -87,7 +88,6 @@ class DepartureRow(BoxLayout):
             self.border = Rectangle(pos=(self.x, self.y), size=(self.width, dp(1)))
         self.bind(pos=self._update_graphics, size=self._update_graphics)
 
-        # 1. Line Pill Container
         pill_box = BoxLayout(size_hint_x=None, width=self.pill_w)
         line_color = get_line_color(line, mode)
         with pill_box.canvas.before:
@@ -95,67 +95,54 @@ class DepartureRow(BoxLayout):
             self.pill_rect = RoundedRectangle(size=(self.pill_w - dp(10), self.pill_h), radius=[dp(6)])
         pill_box.bind(pos=self._update_pill, size=self._update_pill)
         
-        # Line Number Label
-        self.line_lbl = Label(text=line, bold=True, font_size=self.font_line, halign='center', valign='middle')
-        self.line_lbl.bind(size=self._update_text_size)
-        pill_box.add_widget(self.line_lbl)
+        lbl_line = Label(text=line, bold=True, font_size=self.font_line, halign='center', valign='middle')
+        lbl_line.bind(size=lambda i, v: setattr(i, 'text_size', v))
+        pill_box.add_widget(lbl_line)
         self.add_widget(pill_box)
 
-        # 2. Destination Label
         self.dest_label = Label(text=dest.upper(), font_size=self.font_dest, halign='left', valign='middle', 
                                shorten=True, shorten_from='right', padding=[dp(15), 0])
-        self.dest_label.bind(size=self._update_text_size)
+        self.dest_label.bind(size=lambda i, v: setattr(i, 'text_size', v))
         self.add_widget(self.dest_label)
 
-        # 3. Time Column
         time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=self.time_w)
-        
         if is_cancelled:
-            self.time_lbl = Label(text="INNSTILT", font_size='18sp' if is_single else '14sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right', valign='middle')
+            lbl_time = Label(text="INNSTILT", font_size='18sp' if is_single else '14sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right', valign='middle')
         else:
-            self.time_lbl = Label(text=time_str, font_size=self.font_time, bold=True, halign='right', valign='middle')
+            lbl_time = Label(text=time_str, font_size=self.font_time, bold=True, halign='right', valign='middle')
         
-        self.time_lbl.bind(size=self._update_text_size)
-        time_col.add_widget(self.time_lbl)
+        lbl_time.bind(size=lambda i, v: setattr(i, 'text_size', v))
+        time_col.add_widget(lbl_time)
         
         if is_delayed and not is_cancelled:
-            self.aimed_lbl = Label(text=aimed_str, font_size='14sp' if is_single else '11sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right', valign='top', size_hint_y=0.4)
-            self.aimed_lbl.bind(size=self._update_text_size)
-            time_col.add_widget(self.aimed_lbl)
+            lbl_aimed = Label(text=aimed_str, font_size='15sp' if is_single else '12sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right', valign='top', size_hint_y=0.4)
+            lbl_aimed.bind(size=lambda i, v: setattr(i, 'text_size', v))
+            time_col.add_widget(lbl_aimed)
             
         self.add_widget(time_col)
 
     def _update_graphics(self, instance, value):
-        self.bg_rect.pos = instance.pos
-        self.bg_rect.size = instance.size
-        self.border.pos = instance.pos
-        self.border.size = (instance.width, dp(1))
-
-    def _update_text_size(self, instance, value):
-        instance.text_size = value
+        self.bg_rect.pos = instance.pos; self.bg_rect.size = instance.size
+        self.border.pos = instance.pos; self.border.size = (instance.width, dp(1))
 
     def _update_pill(self, instance, value):
-        # Perfectly center the pill rectangle inside the pill_box
         rw, rh = self.pill_rect.size
         self.pill_rect.pos = (instance.x + (instance.width - rw)/2, instance.y + (instance.height - rh)/2)
 
 class PlatformWidget(BoxLayout):
     def __init__(self, platform_label, calls, is_single, on_click=None, **kwargs):
-        row_h = dp(85) if is_single else dp(55)
-        header_h = dp(50) if is_single else dp(35)
+        row_h = dp(88) if is_single else dp(60)
+        header_h = dp(50) if is_single else dp(40)
         content_height = header_h + (len(calls[:store.cfg['max_per_quay']]) * row_h) + dp(15)
-        
         super().__init__(orientation='vertical', size_hint_y=None, height=content_height, **kwargs)
         with self.canvas.before:
-            Color(1, 1, 1, 1)
-            self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1)
+            Color(1, 1, 1, 1); self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1)
         self.bind(pos=self._update_border, size=self._update_border)
 
         header_btn = Button(text=f"PLATFORM {platform_label}", size_hint_y=None, height=header_h, 
-                            bold=True, font_size='20sp' if is_single else '14sp', 
+                            bold=True, font_size='22sp' if is_single else '15sp', 
                             background_normal='', background_color=(1, 1, 1, 0.15))
-        if on_click:
-            header_btn.bind(on_release=lambda x: on_click(platform_label))
+        if on_click: header_btn.bind(on_release=lambda x: on_click(platform_label))
         self.add_widget(header_btn)
 
         now = datetime.now(timezone.utc)
@@ -166,15 +153,9 @@ class PlatformWidget(BoxLayout):
             t_str = "NÅ" if mins <= 0 else f"{mins} MIN" if mins < 20 else expected.strftime("%H:%M")
             delayed = abs((expected - aimed).total_seconds()) > 60
             cancelled = c.get("predictionInaccurate", False) or c.get("status") == "cancelled"
-            
-            self.add_widget(DepartureRow(
-                c["serviceJourney"]["line"]["publicCode"], c["destinationDisplay"]["frontText"], 
-                t_str, aimed.strftime("%H:%M"), delayed, cancelled, mins, 
-                c["serviceJourney"]["transportMode"], is_single
-            ))
+            self.add_widget(DepartureRow(c["serviceJourney"]["line"]["publicCode"], c["destinationDisplay"]["frontText"], t_str, aimed.strftime("%H:%M"), delayed, cancelled, mins, c["serviceJourney"]["transportMode"], is_single))
 
-    def _update_border(self, instance, value): 
-        self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
+    def _update_border(self, instance, value): self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
 
 # --- 4. SCREENS ---
 
@@ -185,42 +166,34 @@ class MainScreen(Screen):
         self.last_data = []
         self.layout = BoxLayout(orientation='vertical')
         
-        # Header
         header = BoxLayout(size_hint_y=None, height=dp(70), padding=[dp(15), 0], spacing=dp(10))
         with header.canvas.after:
-            Color(1, 1, 1, 1)
-            self.line = Rectangle(pos=(0, 0), size=(Window.width, dp(2)))
+            Color(1, 1, 1, 1); self.line = Rectangle(pos=(0, 0), size=(Window.width, dp(2)))
         header.bind(pos=self._update_line, size=self._update_line)
 
-        self.stop_name = Label(text="---", font_size='22sp', bold=True, halign='left', size_hint_x=0.4)
-        self.clock = Label(text="00:00", font_size='34sp', bold=True, size_hint_x=0.2)
-        
+        self.stop_name = Label(text=store.cfg['stop_name'].upper(), font_size='22sp', bold=True, halign='left', valign='middle')
+        self.stop_name.bind(size=lambda i, v: setattr(i, 'text_size', v))
+        self.clock = Label(text="00:00", font_size='36sp', bold=True, size_hint_x=0.2, halign='center', valign='middle')
+        self.clock.bind(size=lambda i, v: setattr(i, 'text_size', v))
         self.actions = BoxLayout(size_hint_x=0.4, spacing=dp(10), padding=[0, dp(10)])
-        self.temp = Label(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.4)
+        self.temp = Label(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.4, halign='right', valign='middle')
+        self.temp.bind(size=lambda i, v: setattr(i, 'text_size', v))
         self.btn_back_all = Button(text="BACK", bold=True, background_color=(0, 0.4, 0.8, 1), size_hint_x=0.6)
         self.btn_back_all.bind(on_release=self.reset_filter)
         self.btn_cfg = Button(text="CONFIG", bold=True, background_color=(0.2, 0.2, 0.2, 1))
         self.btn_exit = Button(text="X", bold=True, size_hint_x=None, width=dp(50), background_color=(0.6, 0.1, 0.1, 1))
         
-        self.actions.add_widget(self.temp)
-        self.actions.add_widget(self.btn_cfg)
-        self.actions.add_widget(self.btn_exit)
-        
-        header.add_widget(self.stop_name)
-        header.add_widget(self.clock)
-        header.add_widget(self.actions)
+        self.actions.add_widget(self.temp); self.actions.add_widget(self.btn_cfg); self.actions.add_widget(self.btn_exit)
+        header.add_widget(self.stop_name); header.add_widget(self.clock); header.add_widget(self.actions)
         
         self.scroll = ScrollView(do_scroll_x=False, do_scroll_y=True, bar_width=dp(5))
         self.board_grid = GridLayout(cols=2, size_hint_y=None, spacing=dp(10), padding=dp(5))
         self.board_grid.bind(minimum_height=self.board_grid.setter('height'))
         
         self.scroll.add_widget(self.board_grid)
-        self.layout.add_widget(header)
-        self.layout.add_widget(self.scroll)
-        self.add_widget(self.layout)
+        self.layout.add_widget(header); self.layout.add_widget(self.scroll); self.add_widget(self.layout)
 
     def _update_line(self, instance, value): self.line.pos = (instance.x, instance.y); self.line.size = (instance.width, dp(2))
-
     def reset_filter(self, *args):
         self.filtered_quay = None
         if self.btn_back_all in self.actions.children: self.actions.remove_widget(self.btn_back_all)
@@ -228,10 +201,11 @@ class MainScreen(Screen):
 
     def filter_to_quay(self, quay_label):
         self.filtered_quay = quay_label
-        if self.btn_back_all not in self.actions.children: self.actions.add_widget(self.btn_back_all, index=2)
+        if self.btn_back_all not in self.actions.children: self.actions.add_widget(self.btn_back_all, index=1)
         self.update_ui(self.last_data)
 
     def on_enter(self):
+        self.stop_name.text = store.cfg['stop_name'].upper()
         Clock.schedule_interval(self.tick, 1)
         self.fetch_data()
         Clock.schedule_interval(lambda dt: self.fetch_data(), 20)
@@ -246,6 +220,7 @@ class MainScreen(Screen):
               aimedDepartureTime
               expectedDepartureTime
               predictionInaccurate
+              status
               quay {{ id publicCode name }}
               destinationDisplay {{ frontText }}
               serviceJourney {{ transportMode line {{ publicCode }} }}
@@ -253,32 +228,44 @@ class MainScreen(Screen):
           }}
         }}'''
         try:
-            r = requests.post("https://api.entur.io/journey-planner/v3/graphql", headers={"ET-Client-Name": "raspi-kivy"}, json={"query": q}, timeout=5)
-            self.last_data = r.json()["data"]["stopPlace"]["estimatedCalls"]
-            Clock.schedule_once(lambda dt: self.update_ui(self.last_data))
-        except: pass
+            r = requests.post("https://api.entur.io/journey-planner/v3/graphql", headers={"ET-Client-Name": "raspi-kivy"}, json={"query": q}, timeout=10)
+            if r.status_code == 200:
+                self.last_data = r.json()["data"]["stopPlace"]["estimatedCalls"]
+                print(f"DEBUG: Found {len(self.last_data)} calls.")
+                Clock.schedule_once(lambda dt: self.update_ui(self.last_data))
+            else: print(f"DEBUG: API Error {r.status_code}")
+        except Exception as e: print(f"DEBUG: Request failed {e}")
 
     def update_ui(self, calls):
         self.stop_name.text = store.cfg['stop_name'].upper()
         self.board_grid.clear_widgets()
-        
         is_single = self.filtered_quay is not None
         self.board_grid.cols = 1 if is_single else 2
         
         grouped = {}
         now = datetime.now(timezone.utc)
+        
+        # Filter logic
+        filtered_count = 0
         for c in calls:
             expected = datetime.fromisoformat(c["expectedDepartureTime"].replace("Z", "+00:00"))
-            if 0 <= (expected - now).total_seconds() <= 3600:
+            # Relaxed filter: show from 2 mins ago to 90 mins ahead
+            if -120 <= (expected - now).total_seconds() <= 5400:
+                filtered_count += 1
                 q_info = c.get("quay", {})
                 p_label = q_info.get("publicCode") or q_info.get("name", "").replace(store.cfg['stop_name'], "").strip()
-                if not p_label or len(p_label) > 5: p_label = q_info.get("id", "??").split(":")[-1]
+                if not p_label or len(p_label) > 10: p_label = "BUS" # Final fallback
                 
                 if self.filtered_quay and p_label != self.filtered_quay: continue
                 grouped.setdefault(p_label, []).append(c)
 
-        for p_label in sorted(grouped.keys()):
-            self.board_grid.add_widget(PlatformWidget(p_label, grouped[p_label], is_single=is_single, on_click=self.filter_to_quay))
+        print(f"DEBUG: {filtered_count} departures fit the time window.")
+        if not grouped:
+            self.board_grid.cols = 1
+            self.board_grid.add_widget(Label(text="INGEN AVGANGER FUNNET", font_size='24sp', color=(1,1,1,0.5)))
+        else:
+            for p_label in sorted(grouped.keys()):
+                self.board_grid.add_widget(PlatformWidget(p_label, grouped[p_label], is_single=is_single, on_click=self.filter_to_quay))
 
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
@@ -311,16 +298,13 @@ class SettingsScreen(Screen):
             self.results.add_widget(btn)
     def select(self, name, sid):
         store.save_config({"stop_id": sid, "stop_name": name})
+        App.get_running_app().root.get_screen('main').on_enter()
         App.get_running_app().root.current = 'main'
 
 class DepartureApp(App):
     def build(self):
         sm = ScreenManager(transition=NoTransition())
-        self.main = MainScreen(name='main'); self.sett = SettingsScreen(name='settings')
-        self.main.btn_cfg.bind(on_release=lambda x: setattr(sm, 'current', 'settings'))
-        self.main.btn_exit.bind(on_release=lambda x: os._exit(0))
-        self.sett.btn_back.bind(on_release=lambda x: setattr(sm, 'current', 'main'))
-        sm.add_widget(self.main); sm.add_widget(self.sett)
+        sm.add_widget(MainScreen(name='main')); sm.add_widget(SettingsScreen(name='settings'))
         return sm
 
 if __name__ == "__main__": DepartureApp().run()
