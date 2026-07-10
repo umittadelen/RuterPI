@@ -223,7 +223,7 @@ class MainScreen(Screen):
         
         # Actions Container
         self.actions = BoxLayout(size_hint_x=0.4, spacing=dp(10), padding=[0, dp(10)])
-        self.temp = PixelLabel(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.4)
+        self.temp = PixelLabel(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.6)
         
         # The Back Button is created but NOT added yet
         self.btn_back_all = Button(text="BACK", bold=True, background_color=(0, 0.4, 0.8, 1), size_hint_x=0.6)
