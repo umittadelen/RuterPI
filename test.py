@@ -150,13 +150,13 @@ class MainScreen(Screen):
     def fetch_data(self): threading.Thread(target=self._query, daemon=True).start()
 
     def _query(self):
-        # UPDATED QUERY: Added 'publicCode' inside 'quay'
+        # IMPROVED QUERY: Fetching name and publicCode
         q = f'''{{
           stopPlace(id: "{store.cfg['stop_id']}") {{
             estimatedCalls(numberOfDepartures: 40) {{
               aimedDepartureTime
               expectedDepartureTime
-              quay {{ id publicCode }}
+              quay {{ id publicCode name }}
               destinationDisplay {{ frontText }}
               serviceJourney {{ line {{ publicCode }} }}
             }}
@@ -177,9 +177,22 @@ class MainScreen(Screen):
         for c in calls:
             expected = datetime.fromisoformat(c["expectedDepartureTime"].replace("Z", "+00:00"))
             if 0 <= (expected - now).total_seconds() <= 3600:
-                # Use publicCode (e.g. '1') if it exists, otherwise fallback to the ID number
                 q_info = c.get("quay", {})
-                p_label = q_info.get("publicCode") or q_info.get("id", "??").split(":")[-1]
+                
+                # --- LOGIC TO CLEAN PLATFORM NAME ---
+                p_code = q_info.get("publicCode") # e.g. "1"
+                p_full_name = q_info.get("name", "") # e.g. "Grefsen stadion 1"
+                
+                if p_code:
+                    p_label = p_code
+                else:
+                    # Strip the stop name from the quay name to find the platform ID
+                    # "Grefsen stadion 2" -> "2"
+                    p_label = p_full_name.replace(store.cfg['stop_name'], "").strip()
+                    # If it's still a mess or empty, use the last few digits of the ID
+                    if not p_label or len(p_label) > 5:
+                        p_label = q_info.get("id", "??").split(":")[-1]
+
                 grouped.setdefault(p_label, []).append(c)
 
         keys = sorted(grouped.keys())
