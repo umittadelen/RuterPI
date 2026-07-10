@@ -27,16 +27,6 @@ from kivy.graphics import Color, RoundedRectangle, Line, Rectangle, RenderContex
 from kivy.metrics import dp
 from kivy.core.window import Window
 
-from kivy.lang import Builder  # Must import this
-
-# Global styling for the keyboard
-Builder.load_string('''
-<VKeyboard>:
-    height: dp(240)
-    key_margin: dp(4)
-    font_size: '22sp'
-''')
-
 # --- 2. CONFIG & HELPERS ---
 CONFIG_FILE = "config.json"
 DEFAULT_CONFIG = {"stop_id": "NSR:StopPlace:58309", "stop_name": "Grefsen stadion", "max_per_quay": 6}
