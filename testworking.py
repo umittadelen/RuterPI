@@ -13,7 +13,6 @@ Config.set('graphics', 'height', '480')
 Config.set('input', 'mouse', 'none')
 Config.set('input', 'hidinput', 'hidinput')
 Config.set('kivy', 'keyboard_mode', 'systemanddock')
-Config.set('kivy', 'keyboard_height', '0.35')
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -23,10 +22,15 @@ from kivy.uix.button import Button
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
 from kivy.uix.textinput import TextInput
+from kivy.uix.vkeyboard import VKeyboard
 from kivy.clock import Clock
 from kivy.graphics import Color, RoundedRectangle, Line, Rectangle, RenderContext
 from kivy.metrics import dp
 from kivy.core.window import Window
+
+VKeyboard.height = dp(220)
+VKeyboard.key_margin = dp(4)
+VKeyboard.font_size = '20sp'
 
 # --- 2. CONFIG & HELPERS ---
 CONFIG_FILE = "config.json"
