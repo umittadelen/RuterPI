@@ -27,7 +27,7 @@ from kivy.graphics import Color, RoundedRectangle, Line, Rectangle
 from kivy.metrics import dp
 from kivy.core.window import Window
 
-# --- 2. CONFIG & COLOR LOGIC ---
+# --- 2. CONFIG & HELPERS ---
 CONFIG_FILE = "config.json"
 DEFAULT_CONFIG = {"stop_id": "NSR:StopPlace:58309", "stop_name": "Grefsen stadion", "max_per_quay": 6}
 
@@ -77,7 +77,6 @@ class DepartureRow(BoxLayout):
             self.border = Rectangle(pos=(self.x, self.y), size=(self.width, dp(1)))
         self.bind(pos=self._update_graphics, size=self._update_graphics)
 
-        # 1. Line Pill
         pill_box = BoxLayout(size_hint_x=None, width=dp(50), padding=[0, dp(8)])
         line_color = get_line_color(line, mode)
         with pill_box.canvas.before:
@@ -87,23 +86,17 @@ class DepartureRow(BoxLayout):
         pill_box.add_widget(Label(text=line, bold=True, font_size='15sp'))
         self.add_widget(pill_box)
 
-        # 2. Destination
-        self.dest_label = Label(text=dest.upper(), font_size='16sp', halign='left', valign='middle', 
-                               shorten=True, shorten_from='right', padding=[dp(10), 0])
+        self.dest_label = Label(text=dest.upper(), font_size='16sp', halign='left', valign='middle', shorten=True, shorten_from='right', padding=[dp(10), 0])
         self.dest_label.bind(size=self._update_text_size)
         self.add_widget(self.dest_label)
 
-        # 3. Time / Cancellation Column
         time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(95), padding=[0, dp(5)])
-        
         if is_cancelled:
-            # Display "INNSTILT" (Cancelled) in Red
             time_col.add_widget(Label(text="INNSTILT", font_size='16sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right'))
         else:
             time_col.add_widget(Label(text=time_str, font_size='19sp', bold=True, halign='right'))
             if is_delayed:
                 time_col.add_widget(Label(text=aimed_str, font_size='11sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
-        
         self.add_widget(time_col)
 
     def _update_graphics(self, instance, value):
@@ -116,13 +109,11 @@ class PlatformWidget(BoxLayout):
     def __init__(self, platform_label, calls, on_click=None, **kwargs):
         content_height = dp(35) + (len(calls[:store.cfg['max_per_quay']]) * dp(50)) + dp(10)
         super().__init__(orientation='vertical', size_hint_y=None, height=content_height, **kwargs)
-        
         with self.canvas.before:
             Color(1, 1, 1, 1)
             self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1)
         self.bind(pos=self._update_border, size=self._update_border)
 
-        # Platform Header - Now a Button to allow filtering
         header_btn = Button(text=f"PLATFORM {platform_label}", size_hint_y=None, height=dp(35), 
                             bold=True, font_size='14sp', background_normal='', background_color=(1, 1, 1, 0.15))
         if on_click:
@@ -134,20 +125,10 @@ class PlatformWidget(BoxLayout):
             expected = datetime.fromisoformat(c["expectedDepartureTime"].replace("Z", "+00:00"))
             aimed = datetime.fromisoformat(c["aimedDepartureTime"].replace("Z", "+00:00"))
             mins = int((expected - now).total_seconds() / 60)
-            
-            # Formatting
             t_str = "NÅ" if mins <= 0 else f"{mins} MIN" if mins < 20 else expected.strftime("%H:%M")
             delayed = abs((expected - aimed).total_seconds()) > 60
-            
-            # Cancellation detection
             cancelled = c.get("predictionInaccurate", False) or c.get("status") == "cancelled"
-            
-            self.add_widget(DepartureRow(
-                c["serviceJourney"]["line"]["publicCode"], 
-                c["destinationDisplay"]["frontText"], 
-                t_str, aimed.strftime("%H:%M"), delayed, cancelled, mins, 
-                c["serviceJourney"]["transportMode"]
-            ))
+            self.add_widget(DepartureRow(c["serviceJourney"]["line"]["publicCode"], c["destinationDisplay"]["frontText"], t_str, aimed.strftime("%H:%M"), delayed, cancelled, mins, c["serviceJourney"]["transportMode"]))
 
     def _update_border(self, instance, value): self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
 
@@ -161,7 +142,7 @@ class MainScreen(Screen):
         
         self.layout = BoxLayout(orientation='vertical')
         
-        # Header Bar
+        # Header
         header = BoxLayout(size_hint_y=None, height=dp(70), padding=[dp(15), 0], spacing=dp(10))
         with header.canvas.after:
             Color(1, 1, 1, 1)
@@ -171,14 +152,18 @@ class MainScreen(Screen):
         self.stop_name = Label(text="---", font_size='22sp', bold=True, halign='left', size_hint_x=0.4)
         self.clock = Label(text="00:00", font_size='34sp', bold=True, size_hint_x=0.2)
         
-        self.actions = BoxLayout(size_hint_x=0.4, spacing=dp(8), padding=[0, dp(10)])
-        self.temp = Label(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.3)
-        self.btn_back_all = Button(text="BACK TO ALL", bold=True, background_color=(0, 0.4, 0.8, 1), size_hint_x=0) # Hidden initially
+        # Actions Container
+        self.actions = BoxLayout(size_hint_x=0.4, spacing=dp(10), padding=[0, dp(10)])
+        self.temp = Label(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.4)
+        
+        # The Back Button is created but NOT added yet
+        self.btn_back_all = Button(text="BACK", bold=True, background_color=(0, 0.4, 0.8, 1), size_hint_x=0.6)
+        self.btn_back_all.bind(on_release=self.reset_filter)
+        
         self.btn_cfg = Button(text="CONFIG", bold=True, background_color=(0.2, 0.2, 0.2, 1))
-        self.btn_exit = Button(text="X", bold=True, size_hint_x=None, width=dp(45), background_color=(0.6, 0.1, 0.1, 1))
+        self.btn_exit = Button(text="X", bold=True, size_hint_x=None, width=dp(50), background_color=(0.6, 0.1, 0.1, 1))
         
         self.actions.add_widget(self.temp)
-        self.actions.add_widget(self.btn_back_all)
         self.actions.add_widget(self.btn_cfg)
         self.actions.add_widget(self.btn_exit)
         
@@ -186,7 +171,7 @@ class MainScreen(Screen):
         header.add_widget(self.clock)
         header.add_widget(self.actions)
         
-        # Board Scroll Area
+        # Board
         self.scroll = ScrollView(do_scroll_x=False, do_scroll_y=True, bar_width=dp(5))
         self.board_grid = GridLayout(cols=2, size_hint_y=None, spacing=dp(10), padding=dp(5))
         self.board_grid.bind(minimum_height=self.board_grid.setter('height'))
@@ -195,19 +180,22 @@ class MainScreen(Screen):
         self.layout.add_widget(header)
         self.layout.add_widget(self.scroll)
         self.add_widget(self.layout)
-        
-        self.btn_back_all.bind(on_release=self.reset_filter)
 
     def _update_line(self, instance, value): self.line.pos = (instance.x, instance.y); self.line.size = (instance.width, dp(2))
 
     def reset_filter(self, *args):
         self.filtered_quay = None
-        self.btn_back_all.size_hint_x = 0
+        # Safely remove the back button if it exists in the layout
+        if self.btn_back_all in self.actions.children:
+            self.actions.remove_widget(self.btn_back_all)
         self.update_ui(self.last_data)
 
     def filter_to_quay(self, quay_label):
         self.filtered_quay = quay_label
-        self.btn_back_all.size_hint_x = 0.5
+        # Add the back button to the actions layout if not already there
+        if self.btn_back_all not in self.actions.children:
+            # Insert it before the Config button (index 1)
+            self.actions.add_widget(self.btn_back_all, index=2)
         self.update_ui(self.last_data)
 
     def on_enter(self):
@@ -244,7 +232,6 @@ class MainScreen(Screen):
         
         grouped = {}
         now = datetime.now(timezone.utc)
-        
         for c in calls:
             expected = datetime.fromisoformat(c["expectedDepartureTime"].replace("Z", "+00:00"))
             if 0 <= (expected - now).total_seconds() <= 3600:
@@ -252,13 +239,10 @@ class MainScreen(Screen):
                 p_label = q_info.get("publicCode") or q_info.get("name", "").replace(store.cfg['stop_name'], "").strip()
                 if not p_label or len(p_label) > 5: p_label = q_info.get("id", "??").split(":")[-1]
                 
-                if self.filtered_quay and p_label != self.filtered_quay:
-                    continue
-                
+                if self.filtered_quay and p_label != self.filtered_quay: continue
                 grouped.setdefault(p_label, []).append(c)
 
         for p_label in sorted(grouped.keys()):
-            # Passing self.filter_to_quay as a callback to the platform widget
             self.board_grid.add_widget(PlatformWidget(p_label, grouped[p_label], on_click=self.filter_to_quay))
 
 class SettingsScreen(Screen):
