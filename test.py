@@ -4,14 +4,21 @@ import requests
 import threading
 from datetime import datetime, timezone
 
-# --- 1. KIVY CONFIGURATION ---
+# --- 1. KIVY CONFIGURATION (CRITICAL FIXES HERE) ---
 from kivy.config import Config
+
+# Graphics Settings
 Config.set('graphics', 'fullscreen', '1')
 Config.set('graphics', 'show_cursor', '0')
 Config.set('graphics', 'width', '800')
 Config.set('graphics', 'height', '480')
-Config.set('input', 'mouse', 'none')
-Config.set('input', 'hidinput', 'hidinput')
+
+# INPUT FIX: This prevents the "No such file" crash and the "Double-Click" ghosting
+Config.set('input', 'mouse', 'mouse,disable_multitouch')
+# Auto-detect the official RPi Touchscreen using libinput
+Config.set('input', 'touchscreen', 'probesysfs,provider=libinput')
+
+# Keyboard: Enable On-Screen Keyboard
 Config.set('kivy', 'keyboard_mode', 'systemanddock')
 
 from kivy.app import App
@@ -70,14 +77,15 @@ store = DataStore()
 class DepartureRow(BoxLayout):
     def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, is_single, **kwargs):
         # Configuration for sizing based on screen state
-        self.row_h = dp(90) if is_single else dp(58)
-        self.font_dest = '30sp' if is_single else '18sp'
+        self.row_h = dp(90) if is_single else dp(60)
+        self.font_dest = '28sp' if is_single else '18sp'
         self.font_time = '34sp' if is_single else '22sp'
         self.font_line = '26sp' if is_single else '16sp'
-        self.font_cancelled = '22sp' if is_single else '14sp'
-        self.pill_w = dp(100) if is_single else dp(55)
-        self.pill_h = dp(60) if is_single else dp(38)
-        self.time_w = dp(180) if is_single else dp(105)
+        self.font_cancelled = '28sp' if is_single else '16sp' # Larger cancelled text
+        
+        self.pill_w = dp(100) if is_single else dp(60)
+        self.pill_h = dp(60) if is_single else dp(40)
+        self.time_w = dp(180) if is_single else dp(110)
 
         super().__init__(orientation='horizontal', size_hint_y=None, height=self.row_h, padding=[dp(10), 0], **kwargs)
         
@@ -96,7 +104,7 @@ class DepartureRow(BoxLayout):
             self.pill_rect = RoundedRectangle(size=(self.pill_w - dp(10), self.pill_h), radius=[dp(6)])
         pill_box.bind(pos=self._update_pill, size=self._update_pill)
         
-        # Line Number Label
+        # Line Number Label (Perfectly Aligned)
         lbl_line = Label(text=line, bold=True, font_size=self.font_line, halign='center', valign='middle')
         lbl_line.bind(size=lambda i, v: setattr(i, 'text_size', v))
         pill_box.add_widget(lbl_line)
@@ -112,8 +120,7 @@ class DepartureRow(BoxLayout):
         time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=self.time_w)
         
         if is_cancelled:
-            # Display "INNSTILT" prominently
-            lbl_time = Label(text="INNSTILT", font_size=self.font_cancelled, bold=True, color=(1, 0.2, 0.2, 1), halign='right', valign='middle')
+            lbl_time = Label(text="INNSTILT", font_size=self.font_cancelled, bold=True, color=(1, 0.1, 0.1, 1), halign='right', valign='middle')
         else:
             lbl_time = Label(text=time_str, font_size=self.font_time, bold=True, halign='right', valign='middle')
         
@@ -139,9 +146,9 @@ class DepartureRow(BoxLayout):
 
 class PlatformWidget(BoxLayout):
     def __init__(self, platform_label, calls, is_single, on_click=None, **kwargs):
-        row_h = dp(90) if is_single else dp(58)
-        header_h = dp(55) if is_single else dp(38)
-        content_height = header_h + (len(calls[:store.cfg['max_per_quay']]) * row_h) + dp(15)
+        row_h = dp(90) if is_single else dp(60)
+        header_h = dp(55) if is_single else dp(40)
+        content_height = header_h + (len(calls[:store.cfg['max_per_quay']]) * row_h) + dp(20)
         
         super().__init__(orientation='vertical', size_hint_y=None, height=content_height, **kwargs)
         with self.canvas.before:
@@ -150,7 +157,7 @@ class PlatformWidget(BoxLayout):
         self.bind(pos=self._update_border, size=self._update_border)
 
         header_btn = Button(text=f"PLATFORM {platform_label}", size_hint_y=None, height=header_h, 
-                            bold=True, font_size='22sp' if is_single else '15sp', 
+                            bold=True, font_size='22sp' if is_single else '16sp', 
                             background_normal='', background_color=(1, 1, 1, 0.15))
         if on_click:
             header_btn.bind(on_release=lambda x: on_click(platform_label))
@@ -326,4 +333,5 @@ class DepartureApp(App):
         sm.add_widget(self.main); sm.add_widget(self.sett)
         return sm
 
-if __name__ == "__main__": DepartureApp().run()
+if __name__ == "__main__":
+    DepartureApp().run()
