@@ -91,7 +91,10 @@ class DepartureRow(BoxLayout):
 
 class PlatformWidget(BoxLayout):
     def __init__(self, platform_label, calls, **kwargs):
-        super().__init__(orientation='vertical', **kwargs)
+        # Calculate required height based on rows
+        content_height = dp(35) + (len(calls[:store.cfg['max_per_quay']]) * dp(52)) + dp(20)
+        super().__init__(orientation='vertical', size_hint_y=None, height=content_height, **kwargs)
+        
         with self.canvas.before:
             Color(1, 1, 1, 1)
             self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1)
@@ -112,15 +115,18 @@ class PlatformWidget(BoxLayout):
             t_str = "NÅ" if mins <= 0 else f"{mins} MIN" if mins < 20 else expected.strftime("%H:%M")
             delayed = abs((expected - aimed).total_seconds()) > 60
             self.add_widget(DepartureRow(c["serviceJourney"]["line"]["publicCode"], c["destinationDisplay"]["frontText"], t_str, aimed.strftime("%H:%M"), delayed, mins))
-        self.add_widget(BoxLayout())
 
     def _update_border(self, instance, value): self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
     def _update_h_bg(self, instance, value): self.h_bg.pos = instance.pos; self.h_bg.size = instance.size
 
+# --- 4. SCREENS ---
+
 class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        layout = BoxLayout(orientation='vertical')
+        self.layout = BoxLayout(orientation='vertical')
+        
+        # Header Bar
         header = BoxLayout(size_hint_y=None, height=dp(70), padding=[dp(15), 0], spacing=dp(10))
         with header.canvas.after:
             Color(1, 1, 1, 1)
@@ -137,9 +143,16 @@ class MainScreen(Screen):
         actions.add_widget(self.temp); actions.add_widget(self.btn_cfg); actions.add_widget(self.btn_exit)
         header.add_widget(self.stop_name); header.add_widget(self.clock); header.add_widget(actions)
         
-        self.board_container = BoxLayout(orientation='vertical', padding=0, spacing=0)
-        layout.add_widget(header); layout.add_widget(self.board_container)
-        self.add_widget(layout)
+        # --- FIX: SCROLLVIEW FOR MANY PLATFORMS ---
+        self.scroll = ScrollView(do_scroll_x=False, do_scroll_y=True)
+        self.board_container = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(10))
+        self.board_container.bind(minimum_height=self.board_container.setter('height'))
+        
+        self.scroll.add_widget(self.board_container)
+        
+        self.layout.add_widget(header)
+        self.layout.add_widget(self.scroll)
+        self.add_widget(self.layout)
 
     def _update_line(self, instance, value): self.line.pos = (instance.x, instance.y); self.line.size = (instance.width, dp(2))
     def on_enter(self):
@@ -150,10 +163,9 @@ class MainScreen(Screen):
     def fetch_data(self): threading.Thread(target=self._query, daemon=True).start()
 
     def _query(self):
-        # IMPROVED QUERY: Fetching name and publicCode
         q = f'''{{
           stopPlace(id: "{store.cfg['stop_id']}") {{
-            estimatedCalls(numberOfDepartures: 40) {{
+            estimatedCalls(numberOfDepartures: 50) {{
               aimedDepartureTime
               expectedDepartureTime
               quay {{ id publicCode name }}
@@ -178,28 +190,25 @@ class MainScreen(Screen):
             expected = datetime.fromisoformat(c["expectedDepartureTime"].replace("Z", "+00:00"))
             if 0 <= (expected - now).total_seconds() <= 3600:
                 q_info = c.get("quay", {})
+                p_code = q_info.get("publicCode")
+                p_full_name = q_info.get("name", "")
                 
-                # --- LOGIC TO CLEAN PLATFORM NAME ---
-                p_code = q_info.get("publicCode") # e.g. "1"
-                p_full_name = q_info.get("name", "") # e.g. "Grefsen stadion 1"
-                
-                if p_code:
-                    p_label = p_code
+                # Clean platform name logic
+                if p_code: p_label = p_code
                 else:
-                    # Strip the stop name from the quay name to find the platform ID
-                    # "Grefsen stadion 2" -> "2"
                     p_label = p_full_name.replace(store.cfg['stop_name'], "").strip()
-                    # If it's still a mess or empty, use the last few digits of the ID
-                    if not p_label or len(p_label) > 5:
-                        p_label = q_info.get("id", "??").split(":")[-1]
+                    if not p_label or len(p_label) > 5: p_label = q_info.get("id", "??").split(":")[-1]
 
                 grouped.setdefault(p_label, []).append(c)
 
         keys = sorted(grouped.keys())
         for i in range(0, len(keys), 2):
             chunk = keys[i:i+2]
+            # Use size_hint_y=None with height based on content to prevent squashing
+            row_height = max([dp(35) + (len(grouped[k][:store.cfg['max_per_quay']]) * dp(52)) + dp(20) for k in chunk])
+            
             if len(chunk) == 2:
-                row = BoxLayout(orientation='horizontal', size_hint_y=1)
+                row = BoxLayout(orientation='horizontal', size_hint_y=None, height=row_height, spacing=dp(5))
                 row.add_widget(PlatformWidget(chunk[0], grouped[chunk[0]], size_hint_x=0.5))
                 row.add_widget(PlatformWidget(chunk[1], grouped[chunk[1]], size_hint_x=0.5))
                 self.board_container.add_widget(row)
