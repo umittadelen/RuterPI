@@ -69,29 +69,25 @@ store = DataStore()
 
 class DepartureRow(BoxLayout):
     def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, is_single, **kwargs):
-        # Configuration for sizing - DRAMATICALLY BIGGER IN SINGLE MODE
-        self.row_h = dp(90) if is_single else dp(60)
-        self.font_dest = '30sp' if is_single else '18sp'
-        self.font_time = '36sp' if is_single else '22sp'
-        self.font_line = '28sp' if is_single else '16sp'
-        self.font_cancelled = '26sp' if is_single else '15sp'
-        
-        self.pill_w = dp(100) if is_single else dp(60)
-        self.pill_h = dp(65) if is_single else dp(40)
-        self.time_w = dp(190) if is_single else dp(110)
+        # Configuration for sizing
+        self.row_h = dp(85) if is_single else dp(55)
+        self.font_dest = '28sp' if is_single else '17sp'
+        self.font_time = '32sp' if is_single else '20sp'
+        self.font_line = '26sp' if is_single else '16sp'
+        self.pill_w = dp(90) if is_single else dp(55)
+        self.pill_h = dp(55) if is_single else dp(34)
+        self.time_w = dp(160) if is_single else dp(95)
 
         super().__init__(orientation='horizontal', size_hint_y=None, height=self.row_h, padding=[dp(10), 0], **kwargs)
         
         with self.canvas.before:
-            # Highlight upcoming
             self.bg_color = Color(0.12, 0.12, 0.12, 1) if mins <= 1 and not is_cancelled else Color(0, 0, 0, 0)
             self.bg_rect = Rectangle(pos=self.pos, size=self.size)
-            # Divider
             Color(0.25, 0.25, 0.25, 1)
             self.border = Rectangle(pos=(self.x, self.y), size=(self.width, dp(1)))
         self.bind(pos=self._update_graphics, size=self._update_graphics)
 
-        # 1. Line Pill
+        # 1. Line Pill Container
         pill_box = BoxLayout(size_hint_x=None, width=self.pill_w)
         line_color = get_line_color(line, mode)
         with pill_box.canvas.before:
@@ -99,34 +95,33 @@ class DepartureRow(BoxLayout):
             self.pill_rect = RoundedRectangle(size=(self.pill_w - dp(10), self.pill_h), radius=[dp(6)])
         pill_box.bind(pos=self._update_pill, size=self._update_pill)
         
-        lbl_line = Label(text=line, bold=True, font_size=self.font_line, halign='center', valign='middle')
-        lbl_line.bind(size=lambda i, v: setattr(i, 'text_size', v))
-        pill_box.add_widget(lbl_line)
+        # Line Number Label
+        self.line_lbl = Label(text=line, bold=True, font_size=self.font_line, halign='center', valign='middle')
+        self.line_lbl.bind(size=self._update_text_size)
+        pill_box.add_widget(self.line_lbl)
         self.add_widget(pill_box)
 
-        # 2. Destination
+        # 2. Destination Label
         self.dest_label = Label(text=dest.upper(), font_size=self.font_dest, halign='left', valign='middle', 
                                shorten=True, shorten_from='right', padding=[dp(15), 0])
-        self.dest_label.bind(size=lambda i, v: setattr(i, 'text_size', v))
+        self.dest_label.bind(size=self._update_text_size)
         self.add_widget(self.dest_label)
 
-        # 3. Time / Status
+        # 3. Time Column
         time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=self.time_w)
-        if is_cancelled:
-            lbl_time = Label(text="INNSTILT", font_size=self.font_cancelled, bold=True, color=(1, 0.1, 0.1, 1), halign='right', valign='middle')
-        else:
-            lbl_time = Label(text=time_str, font_size=self.font_time, bold=True, halign='right', valign='middle')
-            if is_delayed:
-                # Add delay info if available
-                pass
         
-        lbl_time.bind(size=lambda i, v: setattr(i, 'text_size', v))
-        time_col.add_widget(lbl_time)
+        if is_cancelled:
+            self.time_lbl = Label(text="INNSTILT", font_size='18sp' if is_single else '14sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right', valign='middle')
+        else:
+            self.time_lbl = Label(text=time_str, font_size=self.font_time, bold=True, halign='right', valign='middle')
+        
+        self.time_lbl.bind(size=self._update_text_size)
+        time_col.add_widget(self.time_lbl)
         
         if is_delayed and not is_cancelled:
-            lbl_aimed = Label(text=aimed_str, font_size='16sp' if is_single else '12sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right', valign='top', size_hint_y=0.4)
-            lbl_aimed.bind(size=lambda i, v: setattr(i, 'text_size', v))
-            time_col.add_widget(lbl_aimed)
+            self.aimed_lbl = Label(text=aimed_str, font_size='14sp' if is_single else '11sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right', valign='top', size_hint_y=0.4)
+            self.aimed_lbl.bind(size=self._update_text_size)
+            time_col.add_widget(self.aimed_lbl)
             
         self.add_widget(time_col)
 
@@ -136,14 +131,18 @@ class DepartureRow(BoxLayout):
         self.border.pos = instance.pos
         self.border.size = (instance.width, dp(1))
 
+    def _update_text_size(self, instance, value):
+        instance.text_size = value
+
     def _update_pill(self, instance, value):
+        # Perfectly center the pill rectangle inside the pill_box
         rw, rh = self.pill_rect.size
         self.pill_rect.pos = (instance.x + (instance.width - rw)/2, instance.y + (instance.height - rh)/2)
 
 class PlatformWidget(BoxLayout):
     def __init__(self, platform_label, calls, is_single, on_click=None, **kwargs):
-        row_h = dp(90) if is_single else dp(60)
-        header_h = dp(55) if is_single else dp(40)
+        row_h = dp(85) if is_single else dp(55)
+        header_h = dp(50) if is_single else dp(35)
         content_height = header_h + (len(calls[:store.cfg['max_per_quay']]) * row_h) + dp(15)
         
         super().__init__(orientation='vertical', size_hint_y=None, height=content_height, **kwargs)
@@ -153,7 +152,7 @@ class PlatformWidget(BoxLayout):
         self.bind(pos=self._update_border, size=self._update_border)
 
         header_btn = Button(text=f"PLATFORM {platform_label}", size_hint_y=None, height=header_h, 
-                            bold=True, font_size='22sp' if is_single else '15sp', 
+                            bold=True, font_size='20sp' if is_single else '14sp', 
                             background_normal='', background_color=(1, 1, 1, 0.15))
         if on_click:
             header_btn.bind(on_release=lambda x: on_click(platform_label))
@@ -193,19 +192,13 @@ class MainScreen(Screen):
             self.line = Rectangle(pos=(0, 0), size=(Window.width, dp(2)))
         header.bind(pos=self._update_line, size=self._update_line)
 
-        self.stop_name = Label(text="---", font_size='22sp', bold=True, halign='left', valign='middle')
-        self.stop_name.bind(size=lambda i, v: setattr(i, 'text_size', v))
-        
-        self.clock = Label(text="00:00", font_size='36sp', bold=True, size_hint_x=0.2, halign='center', valign='middle')
-        self.clock.bind(size=lambda i, v: setattr(i, 'text_size', v))
+        self.stop_name = Label(text="---", font_size='22sp', bold=True, halign='left', size_hint_x=0.4)
+        self.clock = Label(text="00:00", font_size='34sp', bold=True, size_hint_x=0.2)
         
         self.actions = BoxLayout(size_hint_x=0.4, spacing=dp(10), padding=[0, dp(10)])
-        self.temp = Label(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.4, halign='right', valign='middle')
-        self.temp.bind(size=lambda i, v: setattr(i, 'text_size', v))
-        
+        self.temp = Label(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.4)
         self.btn_back_all = Button(text="BACK", bold=True, background_color=(0, 0.4, 0.8, 1), size_hint_x=0.6)
         self.btn_back_all.bind(on_release=self.reset_filter)
-        
         self.btn_cfg = Button(text="CONFIG", bold=True, background_color=(0.2, 0.2, 0.2, 1))
         self.btn_exit = Button(text="X", bold=True, size_hint_x=None, width=dp(50), background_color=(0.6, 0.1, 0.1, 1))
         
@@ -217,7 +210,6 @@ class MainScreen(Screen):
         header.add_widget(self.clock)
         header.add_widget(self.actions)
         
-        # Board
         self.scroll = ScrollView(do_scroll_x=False, do_scroll_y=True, bar_width=dp(5))
         self.board_grid = GridLayout(cols=2, size_hint_y=None, spacing=dp(10), padding=dp(5))
         self.board_grid.bind(minimum_height=self.board_grid.setter('height'))
@@ -236,8 +228,7 @@ class MainScreen(Screen):
 
     def filter_to_quay(self, quay_label):
         self.filtered_quay = quay_label
-        if self.btn_back_all not in self.actions.children: 
-            self.actions.add_widget(self.btn_back_all, index=1)
+        if self.btn_back_all not in self.actions.children: self.actions.add_widget(self.btn_back_all, index=2)
         self.update_ui(self.last_data)
 
     def on_enter(self):
@@ -255,7 +246,6 @@ class MainScreen(Screen):
               aimedDepartureTime
               expectedDepartureTime
               predictionInaccurate
-              status
               quay {{ id publicCode name }}
               destinationDisplay {{ frontText }}
               serviceJourney {{ transportMode line {{ publicCode }} }}
@@ -271,6 +261,7 @@ class MainScreen(Screen):
     def update_ui(self, calls):
         self.stop_name.text = store.cfg['stop_name'].upper()
         self.board_grid.clear_widgets()
+        
         is_single = self.filtered_quay is not None
         self.board_grid.cols = 1 if is_single else 2
         
