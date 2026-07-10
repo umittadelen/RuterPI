@@ -134,20 +134,33 @@ class DepartureRow(BoxLayout):
     def _update_text_size(self, instance, value): instance.text_size = value
     def _update_pill(self, instance, value): 
         # Adjust pill centering based on big mode
-        offset = dp(10) if self.height > dp(60) else dp(8)
-        self.pill_rect.pos = (instance.x, instance.y + offset)
+        self.pill_rect.pos = (instance.x, instance.y + (instance.height - self.pill_rect.size[1]) / 2)
 
 class PlatformWidget(BoxLayout):
-    def __init__(self, platform_label, calls, on_click=None, **kwargs):
-        content_height = dp(35) + (len(calls[:store.cfg['max_per_quay']]) * dp(50)) + dp(10)
+    def __init__(self, platform_label, calls, on_click=None, is_big=False, **kwargs):
+
+        row_h = dp(80) if is_big else dp(50)
+        header_h = dp(45) if is_big else dp(35)
+        
+        content_height = header_h + (len(calls[:store.cfg['max_per_quay']]) * row_h) + dp(10)
+
         super().__init__(orientation='vertical', size_hint_y=None, height=content_height, **kwargs)
+
         with self.canvas.before:
             Color(1, 1, 1, 1)
             self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1)
         self.bind(pos=self._update_border, size=self._update_border)
 
-        header_btn = Button(text=f"PLATFORM {platform_label}", size_hint_y=None, height=dp(35), 
-                            bold=True, font_size='14sp', background_normal='', background_color=(1, 1, 1, 0.15))
+        header_btn = Button(
+            text=f"PLATFORM {platform_label}", 
+            size_hint_y=None, 
+            height=header_h, 
+            bold=True, 
+            font_size='20sp' if is_big else '14sp', 
+            background_normal='', 
+            background_color=(1, 1, 1, 0.15)
+        )
+
         if on_click:
             header_btn.bind(on_release=lambda x: on_click(platform_label))
         self.add_widget(header_btn)
@@ -160,7 +173,18 @@ class PlatformWidget(BoxLayout):
             t_str = "NÅ" if mins <= 0 else f"{mins} MIN" if mins < 20 else expected.strftime("%H:%M")
             delayed = abs((expected - aimed).total_seconds()) > 60
             cancelled = c.get("predictionInaccurate", False) or c.get("status") == "cancelled"
-            self.add_widget(DepartureRow(c["serviceJourney"]["line"]["publicCode"], c["destinationDisplay"]["frontText"], t_str, aimed.strftime("%H:%M"), delayed, cancelled, mins, c["serviceJourney"]["transportMode"]))
+
+            self.add_widget(DepartureRow(
+                c["serviceJourney"]["line"]["publicCode"], 
+                c["destinationDisplay"]["frontText"], 
+                t_str, 
+                aimed.strftime("%H:%M"), 
+                delayed, 
+                cancelled, 
+                mins, 
+                c["serviceJourney"]["transportMode"],
+                is_big=is_big
+            ))
 
     def _update_border(self, instance, value): self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
 
