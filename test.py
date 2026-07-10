@@ -57,19 +57,13 @@ store = DataStore()
 class DepartureRow(BoxLayout):
     def __init__(self, line, dest, time_str, aimed_str, is_delayed, mins, **kwargs):
         super().__init__(orientation='horizontal', size_hint_y=None, height=dp(52), padding=[dp(10), 0], **kwargs)
-        
         with self.canvas.before:
-            # Row Background
             self.bg_color = Color(0.12, 0.12, 0.12, 1) if mins <= 1 else Color(0, 0, 0, 0)
             self.bg_rect = Rectangle(pos=self.pos, size=self.size)
-            
-            # Bottom Divider Line (Full Width)
             Color(0.25, 0.25, 0.25, 1)
             self.border = Rectangle(pos=(self.x, self.y), size=(self.width, dp(1)))
-            
         self.bind(pos=self._update_graphics, size=self._update_graphics)
 
-        # 1. Line Pill
         pill_box = BoxLayout(size_hint_x=None, width=dp(50), padding=[0, dp(10)])
         color = LINE_COLORS.get(line, (0.3, 0.3, 0.3, 1))
         with pill_box.canvas.before:
@@ -79,13 +73,10 @@ class DepartureRow(BoxLayout):
         pill_box.add_widget(Label(text=line, bold=True, font_size='16sp'))
         self.add_widget(pill_box)
 
-        # 2. Destination
-        self.dest_label = Label(text=dest.upper(), font_size='17sp', halign='left', valign='middle', 
-                               shorten=True, shorten_from='right', padding=[dp(10), 0])
+        self.dest_label = Label(text=dest.upper(), font_size='17sp', halign='left', valign='middle', shorten=True, shorten_from='right', padding=[dp(10), 0])
         self.dest_label.bind(size=self._update_text_size)
         self.add_widget(self.dest_label)
 
-        # 3. Time
         time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(90), padding=[0, dp(5)])
         time_col.add_widget(Label(text=time_str, font_size='20sp', bold=True, halign='right'))
         if is_delayed:
@@ -93,25 +84,20 @@ class DepartureRow(BoxLayout):
         self.add_widget(time_col)
 
     def _update_graphics(self, instance, value):
-        self.bg_rect.pos = instance.pos
-        self.bg_rect.size = instance.size
-        self.border.pos = instance.pos
-        self.border.size = (instance.width, dp(1))
-
+        self.bg_rect.pos = instance.pos; self.bg_rect.size = instance.size
+        self.border.pos = instance.pos; self.border.size = (instance.width, dp(1))
     def _update_text_size(self, instance, value): instance.text_size = value
     def _update_pill(self, instance, value): self.pill_rect.pos = (instance.x, instance.y + dp(10))
 
 class PlatformWidget(BoxLayout):
-    def __init__(self, quay_id, calls, **kwargs):
+    def __init__(self, platform_label, calls, **kwargs):
         super().__init__(orientation='vertical', **kwargs)
         with self.canvas.before:
-            # Outer white border
             Color(1, 1, 1, 1)
             self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1)
         self.bind(pos=self._update_border, size=self._update_border)
 
-        # Header
-        header = Label(text=f"PLATFORM {quay_id}", size_hint_y=None, height=dp(35), bold=True, font_size='14sp')
+        header = Label(text=f"PLATFORM {platform_label}", size_hint_y=None, height=dp(35), bold=True, font_size='14sp')
         with header.canvas.before:
             Color(1, 1, 1, 0.15)
             self.h_bg = Rectangle(pos=header.pos, size=header.size)
@@ -126,7 +112,7 @@ class PlatformWidget(BoxLayout):
             t_str = "NÅ" if mins <= 0 else f"{mins} MIN" if mins < 20 else expected.strftime("%H:%M")
             delayed = abs((expected - aimed).total_seconds()) > 60
             self.add_widget(DepartureRow(c["serviceJourney"]["line"]["publicCode"], c["destinationDisplay"]["frontText"], t_str, aimed.strftime("%H:%M"), delayed, mins))
-        self.add_widget(BoxLayout()) # Spacer
+        self.add_widget(BoxLayout())
 
     def _update_border(self, instance, value): self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
     def _update_h_bg(self, instance, value): self.h_bg.pos = instance.pos; self.h_bg.size = instance.size
@@ -135,8 +121,6 @@ class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         layout = BoxLayout(orientation='vertical')
-        
-        # Header Bar
         header = BoxLayout(size_hint_y=None, height=dp(70), padding=[dp(15), 0], spacing=dp(10))
         with header.canvas.after:
             Color(1, 1, 1, 1)
@@ -145,44 +129,39 @@ class MainScreen(Screen):
 
         self.stop_name = Label(text="---", font_size='22sp', bold=True, halign='left', size_hint_x=0.45)
         self.clock = Label(text="00:00", font_size='34sp', bold=True, size_hint_x=0.2)
-        
         actions = BoxLayout(size_hint_x=0.35, spacing=dp(10), padding=[0, dp(10)])
         self.temp = Label(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.4)
         self.btn_cfg = Button(text="CONFIG", bold=True, background_color=(0.2, 0.2, 0.2, 1))
         self.btn_exit = Button(text="X", bold=True, size_hint_x=None, width=dp(50), background_color=(0.6, 0.1, 0.1, 1))
         
-        actions.add_widget(self.temp)
-        actions.add_widget(self.btn_cfg)
-        actions.add_widget(self.btn_exit)
+        actions.add_widget(self.temp); actions.add_widget(self.btn_cfg); actions.add_widget(self.btn_exit)
+        header.add_widget(self.stop_name); header.add_widget(self.clock); header.add_widget(actions)
         
-        header.add_widget(self.stop_name)
-        header.add_widget(self.clock)
-        header.add_widget(actions)
-        
-        # Main Board Area (No padding here)
         self.board_container = BoxLayout(orientation='vertical', padding=0, spacing=0)
-        
-        layout.add_widget(header)
-        layout.add_widget(self.board_container)
+        layout.add_widget(header); layout.add_widget(self.board_container)
         self.add_widget(layout)
 
-    def _update_line(self, instance, value):
-        self.line.pos = (instance.x, instance.y)
-        self.line.size = (instance.width, dp(2))
-
+    def _update_line(self, instance, value): self.line.pos = (instance.x, instance.y); self.line.size = (instance.width, dp(2))
     def on_enter(self):
         Clock.schedule_interval(self.tick, 1)
         self.fetch_data()
         Clock.schedule_interval(lambda dt: self.fetch_data(), 15)
-
-    def tick(self, dt):
-        self.clock.text = datetime.now().strftime("%H:%M")
-        self.temp.text = get_cpu_temp()
-
+    def tick(self, dt): self.clock.text = datetime.now().strftime("%H:%M"); self.temp.text = get_cpu_temp()
     def fetch_data(self): threading.Thread(target=self._query, daemon=True).start()
 
     def _query(self):
-        q = f'{{ stopPlace(id: "{store.cfg["stop_id"]}") {{ estimatedCalls(numberOfDepartures: 40) {{ aimedDepartureTime expectedDepartureTime quay {{ id }} destinationDisplay {{ frontText }} serviceJourney {{ line {{ publicCode }} }} }} }} }}'
+        # UPDATED QUERY: Added 'publicCode' inside 'quay'
+        q = f'''{{
+          stopPlace(id: "{store.cfg['stop_id']}") {{
+            estimatedCalls(numberOfDepartures: 40) {{
+              aimedDepartureTime
+              expectedDepartureTime
+              quay {{ id publicCode }}
+              destinationDisplay {{ frontText }}
+              serviceJourney {{ line {{ publicCode }} }}
+            }}
+          }}
+        }}'''
         try:
             r = requests.post("https://api.entur.io/journey-planner/v3/graphql", headers={"ET-Client-Name": "raspi-kivy"}, json={"query": q}, timeout=5)
             data = r.json()["data"]["stopPlace"]["estimatedCalls"]
@@ -194,17 +173,20 @@ class MainScreen(Screen):
         self.board_container.clear_widgets()
         grouped = {}
         now = datetime.now(timezone.utc)
+        
         for c in calls:
             expected = datetime.fromisoformat(c["expectedDepartureTime"].replace("Z", "+00:00"))
             if 0 <= (expected - now).total_seconds() <= 3600:
-                q_id = c.get("quay", {}).get("id", "??").split(":")[-1]
-                grouped.setdefault(q_id, []).append(c)
+                # Use publicCode (e.g. '1') if it exists, otherwise fallback to the ID number
+                q_info = c.get("quay", {})
+                p_label = q_info.get("publicCode") or q_info.get("id", "??").split(":")[-1]
+                grouped.setdefault(p_label, []).append(c)
 
         keys = sorted(grouped.keys())
         for i in range(0, len(keys), 2):
             chunk = keys[i:i+2]
             if len(chunk) == 2:
-                row = BoxLayout(orientation='horizontal', size_hint_y=1, padding=0, spacing=0)
+                row = BoxLayout(orientation='horizontal', size_hint_y=1)
                 row.add_widget(PlatformWidget(chunk[0], grouped[chunk[0]], size_hint_x=0.5))
                 row.add_widget(PlatformWidget(chunk[1], grouped[chunk[1]], size_hint_x=0.5))
                 self.board_container.add_widget(row)
@@ -224,9 +206,7 @@ class SettingsScreen(Screen):
         scroll = ScrollView(); scroll.add_widget(self.results)
         layout.add_widget(scroll)
         self.btn_back = Button(text="CANCEL", size_hint_y=None, height=dp(60))
-        layout.add_widget(self.btn_back)
-        self.add_widget(layout)
-
+        layout.add_widget(self.btn_back); self.add_widget(layout)
     def on_search(self, instance, value):
         if len(value) > 2: threading.Thread(target=self._do_search, args=(value,), daemon=True).start()
     def _do_search(self, query):
