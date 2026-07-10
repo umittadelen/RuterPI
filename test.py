@@ -69,15 +69,16 @@ store = DataStore()
 
 class DepartureRow(BoxLayout):
     def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, is_single, **kwargs):
-        # Dynamically scale sizes
-        row_height = dp(80) if is_single else dp(50)
-        font_dest = '26sp' if is_single else '16sp'
-        font_time = '30sp' if is_single else '19sp'
-        font_line = '24sp' if is_single else '15sp'
-        pill_width = dp(80) if is_single else dp(50)
-        time_width = dp(150) if is_single else dp(95)
+        # Configuration for sizing
+        self.row_h = dp(85) if is_single else dp(55)
+        self.font_dest = '28sp' if is_single else '17sp'
+        self.font_time = '32sp' if is_single else '20sp'
+        self.font_line = '26sp' if is_single else '16sp'
+        self.pill_w = dp(90) if is_single else dp(55)
+        self.pill_h = dp(55) if is_single else dp(34)
+        self.time_w = dp(160) if is_single else dp(95)
 
-        super().__init__(orientation='horizontal', size_hint_y=None, height=row_height, padding=[dp(10), 0], **kwargs)
+        super().__init__(orientation='horizontal', size_hint_y=None, height=self.row_h, padding=[dp(10), 0], **kwargs)
         
         with self.canvas.before:
             self.bg_color = Color(0.12, 0.12, 0.12, 1) if mins <= 1 and not is_cancelled else Color(0, 0, 0, 0)
@@ -86,45 +87,63 @@ class DepartureRow(BoxLayout):
             self.border = Rectangle(pos=(self.x, self.y), size=(self.width, dp(1)))
         self.bind(pos=self._update_graphics, size=self._update_graphics)
 
-        # 1. Line Pill
-        pill_box = BoxLayout(size_hint_x=None, width=pill_width, padding=[0, dp(10)])
+        # 1. Line Pill Container
+        pill_box = BoxLayout(size_hint_x=None, width=self.pill_w)
         line_color = get_line_color(line, mode)
         with pill_box.canvas.before:
             Color(*line_color)
-            self.pill_rect = RoundedRectangle(pos=pill_box.pos, size=(pill_width-dp(5), row_height-dp(20)), radius=[dp(6)])
-        pill_box.bind(pos=self._update_pill)
-        pill_box.add_widget(Label(text=line, bold=True, font_size=font_line))
+            self.pill_rect = RoundedRectangle(size=(self.pill_w - dp(10), self.pill_h), radius=[dp(6)])
+        pill_box.bind(pos=self._update_pill, size=self._update_pill)
+        
+        # Line Number Label
+        self.line_lbl = Label(text=line, bold=True, font_size=self.font_line, halign='center', valign='middle')
+        self.line_lbl.bind(size=self._update_text_size)
+        pill_box.add_widget(self.line_lbl)
         self.add_widget(pill_box)
 
-        # 2. Destination
-        self.dest_label = Label(text=dest.upper(), font_size=font_dest, halign='left', valign='middle', 
+        # 2. Destination Label
+        self.dest_label = Label(text=dest.upper(), font_size=self.font_dest, halign='left', valign='middle', 
                                shorten=True, shorten_from='right', padding=[dp(15), 0])
         self.dest_label.bind(size=self._update_text_size)
         self.add_widget(self.dest_label)
 
-        # 3. Time
-        time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=time_width, padding=[0, dp(5)])
+        # 3. Time Column
+        time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=self.time_w)
+        
         if is_cancelled:
-            time_col.add_widget(Label(text="INNSTILT", font_size='18sp' if is_single else '14sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right'))
+            self.time_lbl = Label(text="INNSTILT", font_size='18sp' if is_single else '14sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right', valign='middle')
         else:
-            time_col.add_widget(Label(text=time_str, font_size=font_time, bold=True, halign='right'))
-            if is_delayed:
-                time_col.add_widget(Label(text=aimed_str, font_size='14sp' if is_single else '11sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
+            self.time_lbl = Label(text=time_str, font_size=self.font_time, bold=True, halign='right', valign='middle')
+        
+        self.time_lbl.bind(size=self._update_text_size)
+        time_col.add_widget(self.time_lbl)
+        
+        if is_delayed and not is_cancelled:
+            self.aimed_lbl = Label(text=aimed_str, font_size='14sp' if is_single else '11sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right', valign='top', size_hint_y=0.4)
+            self.aimed_lbl.bind(size=self._update_text_size)
+            time_col.add_widget(self.aimed_lbl)
+            
         self.add_widget(time_col)
 
     def _update_graphics(self, instance, value):
-        self.bg_rect.pos = instance.pos; self.bg_rect.size = instance.size
-        self.border.pos = instance.pos; self.border.size = (instance.width, dp(1))
-    def _update_text_size(self, instance, value): instance.text_size = value
-    def _update_pill(self, instance, value): 
-        # Centering the pill vertically in the row
-        self.pill_rect.pos = (instance.x, instance.y + (instance.height - self.pill_rect.size[1]) / 2)
+        self.bg_rect.pos = instance.pos
+        self.bg_rect.size = instance.size
+        self.border.pos = instance.pos
+        self.border.size = (instance.width, dp(1))
+
+    def _update_text_size(self, instance, value):
+        instance.text_size = value
+
+    def _update_pill(self, instance, value):
+        # Perfectly center the pill rectangle inside the pill_box
+        rw, rh = self.pill_rect.size
+        self.pill_rect.pos = (instance.x + (instance.width - rw)/2, instance.y + (instance.height - rh)/2)
 
 class PlatformWidget(BoxLayout):
     def __init__(self, platform_label, calls, is_single, on_click=None, **kwargs):
-        row_h = dp(80) if is_single else dp(50)
+        row_h = dp(85) if is_single else dp(55)
         header_h = dp(50) if is_single else dp(35)
-        content_height = header_h + (len(calls[:store.cfg['max_per_quay']]) * row_h) + dp(10)
+        content_height = header_h + (len(calls[:store.cfg['max_per_quay']]) * row_h) + dp(15)
         
         super().__init__(orientation='vertical', size_hint_y=None, height=content_height, **kwargs)
         with self.canvas.before:
@@ -154,7 +173,8 @@ class PlatformWidget(BoxLayout):
                 c["serviceJourney"]["transportMode"], is_single
             ))
 
-    def _update_border(self, instance, value): self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
+    def _update_border(self, instance, value): 
+        self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
 
 # --- 4. SCREENS ---
 
