@@ -4,21 +4,19 @@ import requests
 import threading
 from datetime import datetime, timezone
 
-# --- 1. KIVY CONFIGURATION (CRITICAL FIXES HERE) ---
+# --- 1. KIVY CONFIGURATION ---
 from kivy.config import Config
 
-# Graphics Settings
+# Graphics
 Config.set('graphics', 'fullscreen', '1')
 Config.set('graphics', 'show_cursor', '0')
 Config.set('graphics', 'width', '800')
 Config.set('graphics', 'height', '480')
 
-# INPUT FIX: This prevents the "No such file" crash and the "Double-Click" ghosting
+# Input: Simplest possible config for RPi 5 to prevent the FileNotFoundError crash
 Config.set('input', 'mouse', 'mouse,disable_multitouch')
-# Auto-detect the official RPi Touchscreen using libinput
-Config.set('input', 'touchscreen', 'probesysfs,provider=libinput')
 
-# Keyboard: Enable On-Screen Keyboard
+# Keyboard
 Config.set('kivy', 'keyboard_mode', 'systemanddock')
 
 from kivy.app import App
@@ -63,7 +61,9 @@ class DataStore:
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
             with open(CONFIG_FILE) as f:
-                try: return {**DEFAULT_CONFIG, **json.load(f)}
+                try: 
+                    data = json.load(f)
+                    return {**DEFAULT_CONFIG, **data}
                 except: return DEFAULT_CONFIG
         return DEFAULT_CONFIG
     def save_config(self, data):
@@ -76,12 +76,11 @@ store = DataStore()
 
 class DepartureRow(BoxLayout):
     def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, is_single, **kwargs):
-        # Configuration for sizing based on screen state
         self.row_h = dp(90) if is_single else dp(60)
         self.font_dest = '28sp' if is_single else '18sp'
         self.font_time = '34sp' if is_single else '22sp'
         self.font_line = '26sp' if is_single else '16sp'
-        self.font_cancelled = '28sp' if is_single else '16sp' # Larger cancelled text
+        self.font_cancelled = '24sp' if is_single else '15sp'
         
         self.pill_w = dp(100) if is_single else dp(60)
         self.pill_h = dp(60) if is_single else dp(40)
@@ -96,7 +95,6 @@ class DepartureRow(BoxLayout):
             self.border = Rectangle(pos=(self.x, self.y), size=(self.width, dp(1)))
         self.bind(pos=self._update_graphics, size=self._update_graphics)
 
-        # 1. Line Pill Container
         pill_box = BoxLayout(size_hint_x=None, width=self.pill_w)
         line_color = get_line_color(line, mode)
         with pill_box.canvas.before:
@@ -104,21 +102,17 @@ class DepartureRow(BoxLayout):
             self.pill_rect = RoundedRectangle(size=(self.pill_w - dp(10), self.pill_h), radius=[dp(6)])
         pill_box.bind(pos=self._update_pill, size=self._update_pill)
         
-        # Line Number Label (Perfectly Aligned)
         lbl_line = Label(text=line, bold=True, font_size=self.font_line, halign='center', valign='middle')
         lbl_line.bind(size=lambda i, v: setattr(i, 'text_size', v))
         pill_box.add_widget(lbl_line)
         self.add_widget(pill_box)
 
-        # 2. Destination Label
         self.dest_label = Label(text=dest.upper(), font_size=self.font_dest, halign='left', valign='middle', 
                                shorten=True, shorten_from='right', padding=[dp(15), 0])
         self.dest_label.bind(size=lambda i, v: setattr(i, 'text_size', v))
         self.add_widget(self.dest_label)
 
-        # 3. Time Column
         time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=self.time_w)
-        
         if is_cancelled:
             lbl_time = Label(text="INNSTILT", font_size=self.font_cancelled, bold=True, color=(1, 0.1, 0.1, 1), halign='right', valign='middle')
         else:
@@ -181,8 +175,6 @@ class PlatformWidget(BoxLayout):
     def _update_border(self, instance, value): 
         self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
 
-# --- 4. SCREENS ---
-
 class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -196,7 +188,7 @@ class MainScreen(Screen):
             self.line = Rectangle(pos=(0, 0), size=(Window.width, dp(2)))
         header.bind(pos=self._update_line, size=self._update_line)
 
-        self.stop_name = Label(text="---", font_size='22sp', bold=True, halign='left', valign='middle')
+        self.stop_name = Label(text=store.cfg['stop_name'].upper(), font_size='22sp', bold=True, halign='left', valign='middle')
         self.stop_name.bind(size=lambda i, v: setattr(i, 'text_size', v))
         
         self.clock = Label(text="00:00", font_size='36sp', bold=True, size_hint_x=0.2, halign='center', valign='middle')
@@ -216,17 +208,14 @@ class MainScreen(Screen):
         self.actions.add_widget(self.btn_cfg)
         self.actions.add_widget(self.btn_exit)
         
-        header.add_widget(self.stop_name)
-        header.add_widget(self.clock)
-        header.add_widget(self.actions)
+        header.add_widget(self.stop_name); header.add_widget(self.clock); header.add_widget(self.actions)
         
         self.scroll = ScrollView(do_scroll_x=False, do_scroll_y=True, bar_width=dp(5))
         self.board_grid = GridLayout(cols=2, size_hint_y=None, spacing=dp(10), padding=dp(5))
         self.board_grid.bind(minimum_height=self.board_grid.setter('height'))
         
         self.scroll.add_widget(self.board_grid)
-        self.layout.add_widget(header)
-        self.layout.add_widget(self.scroll)
+        self.layout.add_widget(header); self.layout.add_widget(self.scroll)
         self.add_widget(self.layout)
 
     def _update_line(self, instance, value): self.line.pos = (instance.x, instance.y); self.line.size = (instance.width, dp(2))
@@ -234,19 +223,23 @@ class MainScreen(Screen):
     def reset_filter(self, *args):
         self.filtered_quay = None
         if self.btn_back_all in self.actions.children: self.actions.remove_widget(self.btn_back_all)
-        self.update_ui(self.last_data)
+        self.render_ui(self.last_data)
 
     def filter_to_quay(self, quay_label):
         self.filtered_quay = quay_label
         if self.btn_back_all not in self.actions.children: self.actions.add_widget(self.btn_back_all, index=1)
-        self.update_ui(self.last_data)
+        self.render_ui(self.last_data)
 
     def on_enter(self):
+        self.stop_name.text = store.cfg['stop_name'].upper()
         Clock.schedule_interval(self.tick, 1)
         self.fetch_data()
         Clock.schedule_interval(lambda dt: self.fetch_data(), 20)
 
-    def tick(self, dt): self.clock.text = datetime.now().strftime("%H:%M"); self.temp.text = get_cpu_temp()
+    def tick(self, dt): 
+        self.clock.text = datetime.now().strftime("%H:%M")
+        self.temp.text = get_cpu_temp()
+
     def fetch_data(self): threading.Thread(target=self._query, daemon=True).start()
 
     def _query(self):
@@ -264,12 +257,18 @@ class MainScreen(Screen):
           }}
         }}'''
         try:
-            r = requests.post("https://api.entur.io/journey-planner/v3/graphql", headers={"ET-Client-Name": "raspi-kivy"}, json={"query": q}, timeout=5)
-            self.last_data = r.json()["data"]["stopPlace"]["estimatedCalls"]
-            Clock.schedule_once(lambda dt: self.update_ui(self.last_data))
-        except: pass
+            r = requests.post("https://api.entur.io/journey-planner/v3/graphql", 
+                              headers={"ET-Client-Name": "raspi-board-kivy"}, 
+                              json={"query": q}, timeout=10)
+            if r.status_code == 200:
+                self.last_data = r.json()["data"]["stopPlace"]["estimatedCalls"]
+                Clock.schedule_once(lambda dt: self.render_ui(self.last_data))
+            else:
+                print(f"API Error: {r.status_code}")
+        except Exception as e:
+            print(f"Connection Error: {e}")
 
-    def update_ui(self, calls):
+    def render_ui(self, calls):
         self.stop_name.text = store.cfg['stop_name'].upper()
         self.board_grid.clear_widgets()
         is_single = self.filtered_quay is not None
@@ -295,7 +294,7 @@ class SettingsScreen(Screen):
         super().__init__(**kwargs)
         layout = BoxLayout(orientation='vertical', padding=dp(30), spacing=dp(15))
         layout.add_widget(Label(text="SEARCH STOP", font_size='24sp', bold=True, size_hint_y=None, height=dp(40)))
-        self.inp = TextInput(multiline=False, font_size='28sp', size_hint_y=None, height=dp(60), background_color=(0.1,0.1,0.1,1), foreground_color=(1,1,1,1), keyboard_suggestions=False)
+        self.inp = TextInput(multiline=False, font_size='28sp', size_hint_y=None, height=dp(60), keyboard_suggestions=False)
         self.inp.bind(text=self.on_search)
         layout.add_widget(self.inp)
         self.results = GridLayout(cols=1, size_hint_y=None, spacing=dp(5))
@@ -321,16 +320,14 @@ class SettingsScreen(Screen):
             self.results.add_widget(btn)
     def select(self, name, sid):
         store.save_config({"stop_id": sid, "stop_name": name})
+        App.get_running_app().root.get_screen('main').on_enter()
         App.get_running_app().root.current = 'main'
 
 class DepartureApp(App):
     def build(self):
         sm = ScreenManager(transition=NoTransition())
-        self.main = MainScreen(name='main'); self.sett = SettingsScreen(name='settings')
-        self.main.btn_cfg.bind(on_release=lambda x: setattr(sm, 'current', 'settings'))
-        self.main.btn_exit.bind(on_release=lambda x: os._exit(0))
-        self.sett.btn_back.bind(on_release=lambda x: setattr(sm, 'current', 'main'))
-        sm.add_widget(self.main); sm.add_widget(self.sett)
+        sm.add_widget(MainScreen(name='main'))
+        sm.add_widget(SettingsScreen(name='settings'))
         return sm
 
 if __name__ == "__main__":
