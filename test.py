@@ -32,8 +32,8 @@ class BigKeyboard(VKeyboard):
     def __init__(self, **kwargs):
         super(BigKeyboard, self).__init__(**kwargs)
         self.height = dp(240)  # Safe way to set height on the instance
-        self.key_margin = dp(4)
-        self.font_size = '20sp'
+        self.key_margin = [dp(4), dp(4), dp(4), dp(4)]
+        self.font_size = dp(20)
 
 Window.set_vkeyboard_class(BigKeyboard)
 
