@@ -56,47 +56,51 @@ store = DataStore()
 
 class DepartureRow(BoxLayout):
     def __init__(self, line, dest, time_str, aimed_str, is_delayed, mins, **kwargs):
-        super().__init__(orientation='horizontal', size_hint_y=None, height=dp(52), padding=[dp(10), 0], **kwargs)
+        super().__init__(orientation='horizontal', size_hint_y=None, height=dp(50), padding=[dp(10), 0], **kwargs)
         with self.canvas.before:
             self.bg_color = Color(0.12, 0.12, 0.12, 1) if mins <= 1 else Color(0, 0, 0, 0)
             self.bg_rect = Rectangle(pos=self.pos, size=self.size)
-            Color(0.25, 0.25, 0.25, 1)
+            Color(0.25, 0.25, 0.25, 1) # Divider line color
             self.border = Rectangle(pos=(self.x, self.y), size=(self.width, dp(1)))
         self.bind(pos=self._update_graphics, size=self._update_graphics)
 
-        pill_box = BoxLayout(size_hint_x=None, width=dp(50), padding=[0, dp(10)])
+        # 1. Line Pill
+        pill_box = BoxLayout(size_hint_x=None, width=dp(50), padding=[0, dp(8)])
         color = LINE_COLORS.get(line, (0.3, 0.3, 0.3, 1))
         with pill_box.canvas.before:
             Color(*color)
             self.pill_rect = RoundedRectangle(pos=pill_box.pos, size=(dp(45), dp(32)), radius=[dp(4)])
         pill_box.bind(pos=self._update_pill)
-        pill_box.add_widget(Label(text=line, bold=True, font_size='16sp'))
+        pill_box.add_widget(Label(text=line, bold=True, font_size='15sp'))
         self.add_widget(pill_box)
 
-        self.dest_label = Label(text=dest.upper(), font_size='17sp', halign='left', valign='middle', shorten=True, shorten_from='right', padding=[dp(10), 0])
+        # 2. Destination
+        self.dest_label = Label(text=dest.upper(), font_size='16sp', halign='left', valign='middle', 
+                               shorten=True, shorten_from='right', padding=[dp(10), 0])
         self.dest_label.bind(size=self._update_text_size)
         self.add_widget(self.dest_label)
 
-        time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(90), padding=[0, dp(5)])
-        time_col.add_widget(Label(text=time_str, font_size='20sp', bold=True, halign='right'))
+        # 3. Time
+        time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(85), padding=[0, dp(5)])
+        time_col.add_widget(Label(text=time_str, font_size='19sp', bold=True, halign='right'))
         if is_delayed:
-            time_col.add_widget(Label(text=aimed_str, font_size='12sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
+            time_col.add_widget(Label(text=aimed_str, font_size='11sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
         self.add_widget(time_col)
 
     def _update_graphics(self, instance, value):
         self.bg_rect.pos = instance.pos; self.bg_rect.size = instance.size
         self.border.pos = instance.pos; self.border.size = (instance.width, dp(1))
     def _update_text_size(self, instance, value): instance.text_size = value
-    def _update_pill(self, instance, value): self.pill_rect.pos = (instance.x, instance.y + dp(10))
+    def _update_pill(self, instance, value): self.pill_rect.pos = (instance.x, instance.y + dp(8))
 
 class PlatformWidget(BoxLayout):
     def __init__(self, platform_label, calls, **kwargs):
-        # Calculate required height based on rows
-        content_height = dp(35) + (len(calls[:store.cfg['max_per_quay']]) * dp(52)) + dp(20)
+        # Calculate fixed height based on max departures allowed
+        content_height = dp(35) + (len(calls[:store.cfg['max_per_quay']]) * dp(50)) + dp(10)
         super().__init__(orientation='vertical', size_hint_y=None, height=content_height, **kwargs)
         
         with self.canvas.before:
-            Color(1, 1, 1, 1)
+            Color(1, 1, 1, 1) # White platform border
             self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1)
         self.bind(pos=self._update_border, size=self._update_border)
 
@@ -126,7 +130,7 @@ class MainScreen(Screen):
         super().__init__(**kwargs)
         self.layout = BoxLayout(orientation='vertical')
         
-        # Header Bar
+        # Header
         header = BoxLayout(size_hint_y=None, height=dp(70), padding=[dp(15), 0], spacing=dp(10))
         with header.canvas.after:
             Color(1, 1, 1, 1)
@@ -143,13 +147,12 @@ class MainScreen(Screen):
         actions.add_widget(self.temp); actions.add_widget(self.btn_cfg); actions.add_widget(self.btn_exit)
         header.add_widget(self.stop_name); header.add_widget(self.clock); header.add_widget(actions)
         
-        # --- FIX: SCROLLVIEW FOR MANY PLATFORMS ---
-        self.scroll = ScrollView(do_scroll_x=False, do_scroll_y=True)
-        self.board_container = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(10))
-        self.board_container.bind(minimum_height=self.board_container.setter('height'))
+        # Scroll Area with Fixed 2-Column Grid
+        self.scroll = ScrollView(do_scroll_x=False, do_scroll_y=True, bar_width=dp(5))
+        self.board_grid = GridLayout(cols=2, size_hint_y=None, spacing=dp(10), padding=dp(5))
+        self.board_grid.bind(minimum_height=self.board_grid.setter('height'))
         
-        self.scroll.add_widget(self.board_container)
-        
+        self.scroll.add_widget(self.board_grid)
         self.layout.add_widget(header)
         self.layout.add_widget(self.scroll)
         self.add_widget(self.layout)
@@ -182,7 +185,7 @@ class MainScreen(Screen):
 
     def update_ui(self, calls):
         self.stop_name.text = store.cfg['stop_name'].upper()
-        self.board_container.clear_widgets()
+        self.board_grid.clear_widgets()
         grouped = {}
         now = datetime.now(timezone.utc)
         
@@ -190,30 +193,14 @@ class MainScreen(Screen):
             expected = datetime.fromisoformat(c["expectedDepartureTime"].replace("Z", "+00:00"))
             if 0 <= (expected - now).total_seconds() <= 3600:
                 q_info = c.get("quay", {})
-                p_code = q_info.get("publicCode")
-                p_full_name = q_info.get("name", "")
-                
-                # Clean platform name logic
-                if p_code: p_label = p_code
-                else:
-                    p_label = p_full_name.replace(store.cfg['stop_name'], "").strip()
-                    if not p_label or len(p_label) > 5: p_label = q_info.get("id", "??").split(":")[-1]
-
+                p_label = q_info.get("publicCode") or q_info.get("name", "").replace(store.cfg['stop_name'], "").strip()
+                if not p_label or len(p_label) > 5: p_label = q_info.get("id", "??").split(":")[-1]
                 grouped.setdefault(p_label, []).append(c)
 
-        keys = sorted(grouped.keys())
-        for i in range(0, len(keys), 2):
-            chunk = keys[i:i+2]
-            # Use size_hint_y=None with height based on content to prevent squashing
-            row_height = max([dp(35) + (len(grouped[k][:store.cfg['max_per_quay']]) * dp(52)) + dp(20) for k in chunk])
-            
-            if len(chunk) == 2:
-                row = BoxLayout(orientation='horizontal', size_hint_y=None, height=row_height, spacing=dp(5))
-                row.add_widget(PlatformWidget(chunk[0], grouped[chunk[0]], size_hint_x=0.5))
-                row.add_widget(PlatformWidget(chunk[1], grouped[chunk[1]], size_hint_x=0.5))
-                self.board_container.add_widget(row)
-            else:
-                self.board_container.add_widget(PlatformWidget(chunk[0], grouped[chunk[0]], size_hint_x=1.0))
+        # Adding each platform directly to the 2-column grid
+        # This keeps the center vertical line consistent for all platforms.
+        for p_label in sorted(grouped.keys()):
+            self.board_grid.add_widget(PlatformWidget(p_label, grouped[p_label]))
 
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
