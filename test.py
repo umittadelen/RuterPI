@@ -92,11 +92,11 @@ class DepartureRow(BoxLayout):
 
         time_col = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(95), padding=[0, dp(5)])
         if is_cancelled:
-            time_col.add_widget(Label(text="INNSTILT", font_size='16sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right'))
+            time_col.add_widget(Label(text="CANCELLED", font_size='16sp', bold=True, color=(1, 0.2, 0.2, 1), halign='right'))
         else:
             time_col.add_widget(Label(text=time_str, font_size='19sp', bold=True, halign='right'))
             if is_delayed:
-                time_col.add_widget(Label(text=aimed_str, font_size='11sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
+                time_col.add_widget(Label(text=aimed_str, font_size='14sp', color=(1, 1, 1, 0.5), strikethrough=True, halign='right'))
         self.add_widget(time_col)
 
     def _update_graphics(self, instance, value):
