@@ -22,6 +22,7 @@ from kivy.uix.button import Button
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
 from kivy.uix.textinput import TextInput
+from kivy.uix.vkeyboard import VKeyboard
 from kivy.clock import Clock
 from kivy.graphics import Color, RoundedRectangle, Line, Rectangle, RenderContext
 from kivy.metrics import dp
