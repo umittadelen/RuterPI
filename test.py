@@ -96,10 +96,8 @@ store = DataStore()
 class DepartureRow(BoxLayout):
     def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, is_big=False, **kwargs):
         
-        # Define specific sizes based on mode
         row_height = dp(80) if is_big else dp(50)
         pill_w = dp(65) if is_big else dp(46)
-        # Pill height is slightly smaller than the row
         self.pill_h = dp(50) if is_big else dp(32)
         
         f_line = '22sp' if is_big else '15sp'
@@ -117,17 +115,28 @@ class DepartureRow(BoxLayout):
             self.border = Rectangle(pos=(self.x, self.y), size=(self.width, dp(1)))
         self.bind(pos=self._update_graphics, size=self._update_graphics)
 
-        # 1. Pill Box: Remove padding to stop it from pushing the pill up
+        # 1. Pill Box
         pill_box = BoxLayout(size_hint_x=None, width=pill_w)
         line_color = get_line_color(line, mode)
         
         with pill_box.canvas.before:
             Color(*line_color)
-            # 2. Set the rectangle size once here
+            # The background pill is slightly narrower than the box for spacing
             self.pill_rect = RoundedRectangle(size=(pill_w - dp(6), self.pill_h), radius=[dp(4)])
             
         pill_box.bind(pos=self._update_pill, size=self._update_pill)
-        pill_box.add_widget(PixelLabel(text=line, bold=True, font_size=f_line))
+
+        # FIX: Added halign, valign, and bound size to text_size
+        self.line_label = PixelLabel(
+            text=line, 
+            bold=True, 
+            font_size=f_line,
+            halign='center', 
+            valign='middle'
+        )
+        self.line_label.bind(size=self._update_text_size) # Reuse the helper
+        
+        pill_box.add_widget(self.line_label)
         self.add_widget(pill_box)
 
         # Destination
@@ -152,12 +161,12 @@ class DepartureRow(BoxLayout):
         self.border.size = (instance.width, dp(1))
 
     def _update_text_size(self, instance, value): 
+        # This makes the text "box" match the widget size so alignment works
         instance.text_size = value
 
     def _update_pill(self, instance, value): 
-        # 3. Robust math: Center the rectangle exactly inside the box's current Y
-        # instance.y is the bottom of the row, height/2 is middle, pill_h/2 pulls it back to center
-        self.pill_rect.pos = (instance.x, instance.y + (instance.height - self.pill_h) / 2)
+        # Center the background rectangle
+        self.pill_rect.pos = (instance.x + dp(3), instance.y + (instance.height - self.pill_h) / 2)
 
 class PlatformWidget(BoxLayout):
     def __init__(self, platform_label, calls, on_click=None, is_big=False, **kwargs):
