@@ -31,8 +31,8 @@ from kivy.core.window import Window
 class BigKeyboard(VKeyboard):
     def __init__(self, **kwargs):
         super(BigKeyboard, self).__init__(**kwargs)
-        self.height = dp(280)  # Safe way to set height on the instance
-        self.key_margin = [dp(2), dp(2), dp(2), dp(2)] 
+        self.height = dp(300)  # Safe way to set height on the instance
+        self.key_margin = [dp(4), dp(4), dp(4), dp(4)] 
         self.font_size = dp(25)
         self.width = Window.width
 
