@@ -1,27 +1,25 @@
 import requests
 import json
 
-def fetch_transit_alerts(stop_id):
+def fetch_transit_alerts_pro(stop_id):
     url = "https://api.entur.io/journey-planner/v3/graphql"
     
-    # This query scans the three "Truth levels":
-    # 1. StopPlace (Station level - e.g., "The stop is closed")
-    # 2. ServiceJourney (Trip level - e.g., "This specific bus is delayed")
-    # 3. Line (Route level - e.g., "Line 31 is diverted due to roadwork")
+    # We ask for:
+    # 1. StopPlace situations (Station-wide)
+    # 2. Line situations (For every line passing through)
+    # 3. Trip situations (Specific to the vehicle)
     query = f'''{{
       stopPlace(id: "{stop_id}") {{
         name
         situations {{
           summary {{ value }}
-          description {{ value }}
         }}
-        estimatedCalls(numberOfDepartures: 50) {{
+        estimatedCalls(numberOfDepartures: 20) {{
           serviceJourney {{
             line {{
               publicCode
               situations {{
                 summary {{ value }}
-                description {{ value }}
               }}
             }}
             situations {{
@@ -32,50 +30,36 @@ def fetch_transit_alerts(stop_id):
       }}
     }}'''
 
-    headers = {"ET-Client-Name": "pro-alert-scanner"}
+    headers = {"ET-Client-Name": "pro-kiosk-scanner"}
     
     try:
-        response = requests.post(url, json={'query': query}, headers=headers, timeout=10)
-        data = response.json()['data']['stopPlace']
+        r = requests.post(url, json={'query': query}, headers=headers, timeout=10)
+        data = r.json()['data']['stopPlace']
         
-        print(f"=== SCANNING: {data['name']} ({stop_id}) ===")
+        all_alerts = set()
 
-        # Using a set to automatically deduplicate alerts
-        all_unique_alerts = set()
+        # Check Stop Level
+        for s in data.get('situations', []):
+            all_alerts.add(s['summary'][0]['value'])
 
-        # --- LEVEL 1: STATION ALERTS ---
-        for sit in data.get('situations', []):
-            txt = sit['summary'][0]['value']
-            all_unique_alerts.add(f"[STATION] {txt}")
-
-        # --- LEVEL 2 & 3: TRIP & LINE ALERTS ---
-        calls = data.get('estimatedCalls', [])
-        for c in calls:
+        # Check Line and Trip Level for all scheduled buses
+        for c in data.get('estimatedCalls', []):
             sj = c.get('serviceJourney', {})
-            line = sj.get('line', {})
-            line_code = line.get('publicCode', '??')
+            # Route level alerts (e.g., Line 31)
+            for s in sj.get('line', {}).get('situations', []):
+                all_alerts.add(s['summary'][0]['value'])
+            # Trip specific alerts
+            for s in sj.get('situations', []):
+                all_alerts.add(s['summary'][0]['value'])
 
-            # Check Line-wide alerts (Most common for "Arrangements" or "Divertions")
-            for sit in line.get('situations', []):
-                txt = sit['summary'][0]['value']
-                all_unique_alerts.add(f"[LINE {line_code}] {txt}")
-
-            # Check Trip-specific alerts
-            for sit in sj.get('situations', []):
-                txt = sit['summary'][0]['value']
-                all_unique_alerts.add(f"[VEHICLE {line_code}] {txt}")
-
-        # --- RESULTS ---
-        if not all_unique_alerts:
-            print("\n✅ No active alerts found for this stop or any passing lines.")
+        if not all_alerts:
+            print("No alerts found. (Likely because the 19:30 alert is not yet active in the departure feed).")
         else:
-            print(f"\n⚠️ FOUND {len(all_unique_alerts)} UNIQUE ALERTS:\n")
-            for i, alert in enumerate(all_unique_alerts, 1):
-                print(f"{i}. {alert}")
+            for i, a in enumerate(all_alerts, 1):
+                print(f"{i}. {a}")
 
     except Exception as e:
-        print(f"Network error: {e}")
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
-    # Test for Fornebuveien
-    fetch_transit_alerts("NSR:StopPlace:3621")
+    fetch_transit_alerts_pro("NSR:StopPlace:3621")
