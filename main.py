@@ -1,31 +1,29 @@
 import requests
 import json
 
-def test_entur_alerts():
+def fetch_transit_alerts(stop_id):
     url = "https://api.entur.io/journey-planner/v3/graphql"
     
-    # The specific stop ID for Fornebuveien
-    stop_id = "NSR:StopPlace:3621"
-    
-    # This query looks for situations in TWO places: 
-    # 1. Directly under stopPlace (Station-wide alerts)
-    # 2. Under serviceJourney (Individual bus alerts)
+    # This query scans the three "Truth levels":
+    # 1. StopPlace (Station level - e.g., "The stop is closed")
+    # 2. ServiceJourney (Trip level - e.g., "This specific bus is delayed")
+    # 3. Line (Route level - e.g., "Line 31 is diverted due to roadwork")
     query = f'''{{
       stopPlace(id: "{stop_id}") {{
         name
         situations {{
           summary {{ value }}
+          description {{ value }}
         }}
-        estimatedCalls(numberOfDepartures: 10) {{
-          expectedDepartureTime
-          destinationDisplay {{ frontText }}
-          serviceJourney {{ 
-            line {{ 
-              publicCode 
+        estimatedCalls(numberOfDepartures: 50) {{
+          serviceJourney {{
+            line {{
+              publicCode
               situations {{
                 summary {{ value }}
+                description {{ value }}
               }}
-            }} 
+            }}
             situations {{
               summary {{ value }}
             }}
@@ -34,51 +32,50 @@ def test_entur_alerts():
       }}
     }}'''
 
-    headers = {"ET-Client-Name": "api-alert-tester"}
-    
-    print(f"--- Fetching data for {stop_id} ---")
+    headers = {"ET-Client-Name": "pro-alert-scanner"}
     
     try:
         response = requests.post(url, json={'query': query}, headers=headers, timeout=10)
+        data = response.json()['data']['stopPlace']
         
-        if response.status_code != 200:
-            print(f"Error: API returned status {response.status_code}")
-            return
+        print(f"=== SCANNING: {data['name']} ({stop_id}) ===")
 
-        data = response.json()
-        stop_place = data['data']['stopPlace']
-        
-        print(f"\nSTOP NAME: {stop_place['name']}")
-        
-        # 1. Check Station-Wide Situations
-        print("\n[ STATION-WIDE ALERTS ]")
-        stop_situations = stop_place.get('situations', [])
-        if not stop_situations:
-            print("No station-wide alerts found.")
-        else:
-            for s in stop_situations:
-                print(f"⚠️ ALERT: {s['summary'][0]['value']}")
+        # Using a set to automatically deduplicate alerts
+        all_unique_alerts = set()
 
-        # 2. Check Individual Bus Situations
-        print("\n[ INDIVIDUAL BUS ALERTS ]")
-        calls = stop_place.get('estimatedCalls', [])
-        found_bus_alert = False
-        
+        # --- LEVEL 1: STATION ALERTS ---
+        for sit in data.get('situations', []):
+            txt = sit['summary'][0]['value']
+            all_unique_alerts.add(f"[STATION] {txt}")
+
+        # --- LEVEL 2 & 3: TRIP & LINE ALERTS ---
+        calls = data.get('estimatedCalls', [])
         for c in calls:
-            line = c['serviceJourney']['line']['publicCode']
-            dest = c['destinationDisplay']['frontText']
-            bus_situations = c['serviceJourney'].get('situations', [])
-            
-            if bus_situations:
-                found_bus_alert = True
-                for s in bus_situations:
-                    print(f"🚌 LINE {line} to {dest}: {s['summary'][0]['value']}")
-        
-        if not found_bus_alert:
-            print("No individual bus alerts found.")
+            sj = c.get('serviceJourney', {})
+            line = sj.get('line', {})
+            line_code = line.get('publicCode', '??')
+
+            # Check Line-wide alerts (Most common for "Arrangements" or "Divertions")
+            for sit in line.get('situations', []):
+                txt = sit['summary'][0]['value']
+                all_unique_alerts.add(f"[LINE {line_code}] {txt}")
+
+            # Check Trip-specific alerts
+            for sit in sj.get('situations', []):
+                txt = sit['summary'][0]['value']
+                all_unique_alerts.add(f"[VEHICLE {line_code}] {txt}")
+
+        # --- RESULTS ---
+        if not all_unique_alerts:
+            print("\n✅ No active alerts found for this stop or any passing lines.")
+        else:
+            print(f"\n⚠️ FOUND {len(all_unique_alerts)} UNIQUE ALERTS:\n")
+            for i, alert in enumerate(all_unique_alerts, 1):
+                print(f"{i}. {alert}")
 
     except Exception as e:
-        print(f"Connection failed: {e}")
+        print(f"Network error: {e}")
 
 if __name__ == "__main__":
-    test_entur_alerts()
+    # Test for Fornebuveien
+    fetch_transit_alerts("NSR:StopPlace:3621")
