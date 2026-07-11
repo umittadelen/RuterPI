@@ -232,6 +232,56 @@ class PlatformWidget(BoxLayout):
 
     def _update_border(self, instance, value): self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
 
+class AlertBox(BoxLayout):
+    def __init__(self, **kwargs):
+        super().__init__(orientation='horizontal', size_hint_y=None, height=0, opacity=0, **kwargs)
+        
+        with self.canvas.before:
+            # Ruter/Entur Warning Yellow
+            Color(1, 0.82, 0, 1) 
+            self.bg = Rectangle(pos=self.pos, size=self.size)
+            # Black border at the top
+            Color(0, 0, 0, 1)
+            self.border = Rectangle(pos=(self.x, self.y + self.height - dp(2)), size=(self.width, dp(2)))
+            
+        self.bind(pos=self._update_rect, size=self._update_rect)
+        
+        # Alert Icon
+        self.add_widget(Label(text="⚠️", size_hint_x=None, width=dp(40), color=(0,0,0,1), font_size='20sp'))
+        
+        # Alert Text
+        self.label = TIDLabel(
+            text="", 
+            color=(0,0,0,1), 
+            bold=True, 
+            font_size='16sp', 
+            halign='left', 
+            valign='middle'
+        )
+        self.label.bind(size=self._update_text_size)
+        self.add_widget(self.label)
+
+    def _update_text_size(self, instance, value):
+        instance.text_size = value
+
+    def _update_rect(self, instance, value):
+        self.bg.pos = instance.pos
+        self.bg.size = instance.size
+        self.border.pos = (instance.x, instance.y + instance.height - dp(1))
+        self.border.size = (instance.width, dp(1))
+
+    def update_alerts(self, alerts):
+        if not alerts:
+            self.height = 0
+            self.opacity = 0
+            self.label.text = ""
+        else:
+            # Deduplicate alerts and join them with "  |  "
+            unique_alerts = list(set(alerts))
+            self.label.text = "  |  ".join(unique_alerts).upper()
+            self.height = dp(45)
+            self.opacity = 1
+
 # --- 4. SCREENS ---
 
 class MainScreen(Screen):
@@ -290,6 +340,10 @@ class MainScreen(Screen):
         self.scroll.add_widget(self.board_grid)
         self.layout.add_widget(header)
         self.layout.add_widget(self.scroll)
+
+        self.alert_box = AlertBox()
+        self.layout.add_widget(self.alert_box)
+
         self.add_widget(self.layout)
 
     def _update_line(self, instance, value): self.line.pos = (instance.x, instance.y); self.line.size = (instance.width, dp(2))
@@ -325,7 +379,13 @@ class MainScreen(Screen):
               predictionInaccurate
               quay {{ id publicCode name }}
               destinationDisplay {{ frontText }}
-              serviceJourney {{ transportMode line {{ publicCode }} }}
+              serviceJourney {{ 
+                transportMode 
+                line {{ publicCode }} 
+                situations {{
+                  summary {{ value }}
+                }}
+              }}
             }}
           }}
         }}'''
@@ -344,6 +404,8 @@ class MainScreen(Screen):
         self.stop_name.text = store.cfg['stop_name'].upper()
         self.board_grid.clear_widgets()
         
+        all_situations = []
+        
         is_single = self.filtered_quay is not None
         self.board_grid.cols = 2 if not self.filtered_quay else 1
         
@@ -358,6 +420,13 @@ class MainScreen(Screen):
                 
                 if self.filtered_quay and p_label != self.filtered_quay: continue
                 grouped.setdefault(p_label, []).append(c)
+            sits = c.get("serviceJourney", {}).get("situations", [])
+            for s in sits:
+                summary = s.get("summary", [{}])[0].get("value")
+                if summary:
+                    all_situations.append(summary)
+        
+        self.alert_box.update_alerts(all_situations)
 
         for p_label in sorted(grouped.keys()):
             self.board_grid.add_widget(PlatformWidget(
