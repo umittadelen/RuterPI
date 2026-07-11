@@ -234,52 +234,42 @@ class PlatformWidget(BoxLayout):
 
 class AlertBox(BoxLayout):
     def __init__(self, **kwargs):
-        super().__init__(orientation='horizontal', size_hint_y=None, height=0, opacity=0, **kwargs)
+        # Increased height to dp(60) to fit more text
+        super().__init__(orientation='horizontal', size_hint_y=None, height=0, opacity=0, padding=[dp(10), 0], **kwargs)
         
         with self.canvas.before:
-            # Ruter/Entur Warning Yellow
             Color(1, 0.82, 0, 1) 
             self.bg = Rectangle(pos=self.pos, size=self.size)
-            # Black border at the top
             Color(0, 0, 0, 1)
             self.border = Rectangle(pos=(self.x, self.y + self.height - dp(2)), size=(self.width, dp(2)))
-            
         self.bind(pos=self._update_rect, size=self._update_rect)
         
-        # Alert Icon
-        self.add_widget(Label(text="⚠️", size_hint_x=None, width=dp(40), color=(0,0,0,1), font_size='20sp'))
+        self.add_widget(Label(text="⚠️", size_hint_x=None, width=dp(40), color=(0,0,0,1), font_size='24sp', bold=True))
         
-        # Alert Text
-        self.label = TIDLabel(
+        self.label = Label( # Use standard Label for better wrapping
             text="", 
             color=(0,0,0,1), 
             bold=True, 
-            font_size='16sp', 
+            font_size='14sp', # Slightly smaller to fit more
             halign='left', 
-            valign='middle'
+            valign='middle',
+            font_name='./fonts/TID-Bold.ttf' # Manual font apply
         )
         self.label.bind(size=self._update_text_size)
         self.add_widget(self.label)
-
-    def _update_text_size(self, instance, value):
-        instance.text_size = value
-
-    def _update_rect(self, instance, value):
-        self.bg.pos = instance.pos
-        self.bg.size = instance.size
-        self.border.pos = (instance.x, instance.y + instance.height - dp(1))
-        self.border.size = (instance.width, dp(1))
 
     def update_alerts(self, alerts):
         if not alerts:
             self.height = 0
             self.opacity = 0
-            self.label.text = ""
         else:
-            # Deduplicate alerts and join them with "  |  "
-            unique_alerts = list(set(alerts))
-            self.label.text = "  |  ".join(unique_alerts).upper()
-            self.height = dp(45)
+            # Clean up duplicates and join
+            unique = []
+            for a in alerts:
+                if a not in unique: unique.append(a)
+            
+            self.label.text = " | ".join(unique)
+            self.height = dp(65) # Taller to handle the Fornebuparken text
             self.opacity = 1
 
 # --- 4. SCREENS ---
@@ -373,6 +363,10 @@ class MainScreen(Screen):
     def _query(self):
         q = f'''{{
           stopPlace(id: "{store.cfg['stop_id']}") {{
+            name
+            situations {{
+              summary {{ value }}
+            }}
             estimatedCalls(numberOfDepartures: 50) {{
               aimedDepartureTime
               expectedDepartureTime
@@ -392,7 +386,8 @@ class MainScreen(Screen):
         try:
             r = requests.post("https://api.entur.io/journey-planner/v3/graphql", headers={"ET-Client-Name": "raspi-kivy"}, json={"query": q}, timeout=5)
             if r.status_code == 200:
-                self.last_data = r.json()["data"]["stopPlace"]["estimatedCalls"]
+                stop_data = r.json()["data"]["stopPlace"]
+                self.last_data = stop_data # Store the object
                 self.last_update_success = datetime.now()
                 Clock.schedule_once(lambda dt: self.update_ui(self.last_data))
             else:
@@ -400,31 +395,39 @@ class MainScreen(Screen):
         except Exception as e:
             print(f"NETWORK ERROR: {e}")
 
-    def update_ui(self, calls):
+    def update_ui(self, data):
+        stop_info = data # This is r.json()["data"]["stopPlace"]
+        calls = stop_info.get("estimatedCalls", [])
+        
         self.stop_name.text = store.cfg['stop_name'].upper()
         self.board_grid.clear_widgets()
         
         all_situations = []
         
+        # 1. Collect Stop-Wide Alerts (e.g., "Stop is closed")
+        for s in stop_info.get("situations", []):
+            summary = s.get("summary", [{}])[0].get("value")
+            if summary: all_situations.append(summary)
+
+        # 2. Collect Trip-Specific Alerts (e.g., "Line 31 is delayed")
         is_single = self.filtered_quay is not None
         self.board_grid.cols = 2 if not self.filtered_quay else 1
         
         grouped = {}
         now = datetime.now(timezone.utc)
         for c in calls:
+            # Extract trip alerts
+            sits = c.get("serviceJourney", {}).get("situations", [])
+            for s in sits:
+                summary = s.get("summary", [{}])[0].get("value")
+                if summary: all_situations.append(summary)
             expected = datetime.fromisoformat(c["expectedDepartureTime"].replace("Z", "+00:00"))
             if 0 <= (expected - now).total_seconds() <= 3600:
                 q_info = c.get("quay", {})
                 p_label = q_info.get("publicCode") or q_info.get("name", "").replace(store.cfg['stop_name'], "").strip()
                 if not p_label or len(p_label) > 5: p_label = q_info.get("id", "??").split(":")[-1]
-                
                 if self.filtered_quay and p_label != self.filtered_quay: continue
                 grouped.setdefault(p_label, []).append(c)
-            sits = c.get("serviceJourney", {}).get("situations", [])
-            for s in sits:
-                summary = s.get("summary", [{}])[0].get("value")
-                if summary:
-                    all_situations.append(summary)
         
         self.alert_box.update_alerts(all_situations)
 
