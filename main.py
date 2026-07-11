@@ -20,7 +20,12 @@ def test_entur_alerts():
           expectedDepartureTime
           destinationDisplay {{ frontText }}
           serviceJourney {{ 
-            line {{ publicCode }} 
+            line {{ 
+              publicCode 
+              situations {{
+                summary {{ value }}
+              }}
+            }} 
             situations {{
               summary {{ value }}
             }}
