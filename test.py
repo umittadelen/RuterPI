@@ -79,14 +79,13 @@ class PixelLabel(Label):
             texture.min_filter = 'nearest'
             texture.mag_filter = 'nearest'
 
-class TIDLabel(Label): #./fonts/TID-Bold.ttf
+class TIDLabel(Label):
     def __init__(self, **kwargs):
         kwargs.setdefault('font_name', './fonts/TID-Bold.ttf') 
         super().__init__(**kwargs)
 
 class TIDButton(Button):
     def __init__(self, **kwargs):
-        # Set the font
         kwargs.setdefault('font_name', './fonts/TID-Bold.ttf')
         super().__init__(**kwargs)
 
