@@ -11,6 +11,7 @@ Config.set('graphics', 'show_cursor', '0')
 Config.set('graphics', 'width', '800')
 Config.set('graphics', 'height', '480')
 Config.set('input', 'mouse', 'none')
+Config.set('graphics', 'maxfps', '10')
 Config.set('input', 'hidinput', 'hidinput')
 Config.set('kivy', 'keyboard_mode', 'dock')
 
