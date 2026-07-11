@@ -79,6 +79,11 @@ class PixelLabel(Label):
             texture.min_filter = 'nearest'
             texture.mag_filter = 'nearest'
 
+class TIDLabel(Label): #./fonts/TID-Bold.ttf
+    def __init__(self, **kwargs):
+        kwargs.setdefault('font_name', './fonts/TID-Bold.ttf') 
+        super().__init__(**kwargs)
+
 class DataStore:
     def __init__(self): self.cfg = self.load_config()
     def load_config(self):
@@ -241,8 +246,8 @@ class MainScreen(Screen):
             self.line = Rectangle(pos=(0, 0), size=(Window.width, dp(2)))
         header.bind(pos=self._update_line, size=self._update_line)
 
-        self.stop_name = Label(text="---", font_size='22sp', bold=True, halign='left', size_hint_x=0.4)
-        self.clock = Label(text="00:00", font_size='34sp', bold=True, size_hint_x=0.2)
+        self.stop_name = TIDLabel(text="---", font_size='22sp', bold=True, halign='left', size_hint_x=0.4)
+        self.clock = TIDLabel(text="00:00", font_size='34sp', bold=True, size_hint_x=0.2)
         
         self.stale_warning = PixelLabel(
             text="OFFLINE / STALE DATA", 
