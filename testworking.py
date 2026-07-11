@@ -11,8 +11,9 @@ Config.set('graphics', 'show_cursor', '0')
 Config.set('graphics', 'width', '800')
 Config.set('graphics', 'height', '480')
 Config.set('input', 'mouse', 'none')
+Config.set('graphics', 'maxfps', '10')
 Config.set('input', 'hidinput', 'hidinput')
-Config.set('kivy', 'keyboard_mode', 'systemanddock')
+Config.set('kivy', 'keyboard_mode', 'dock')
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -22,10 +23,21 @@ from kivy.uix.button import Button
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
 from kivy.uix.textinput import TextInput
+from kivy.uix.vkeyboard import VKeyboard
 from kivy.clock import Clock
 from kivy.graphics import Color, RoundedRectangle, Line, Rectangle, RenderContext
-from kivy.metrics import dp
+from kivy.metrics import dp, sp
 from kivy.core.window import Window
+
+class BigKeyboard(VKeyboard):
+    def __init__(self, **kwargs):
+        super(BigKeyboard, self).__init__(**kwargs)
+        self.height = dp(340)  # Safe way to set height on the instance
+        self.key_margin = [dp(4), dp(4), dp(4), dp(4)] 
+        self.font_size = dp(25)
+        self.width = Window.width
+
+Window.set_vkeyboard_class(BigKeyboard)
 
 # --- 2. CONFIG & HELPERS ---
 CONFIG_FILE = "config.json"
@@ -67,6 +79,16 @@ class PixelLabel(Label):
             texture.min_filter = 'nearest'
             texture.mag_filter = 'nearest'
 
+class TIDLabel(Label):
+    def __init__(self, **kwargs):
+        kwargs.setdefault('font_name', './fonts/TID-Bold.ttf') 
+        super().__init__(**kwargs)
+
+class TIDButton(Button):
+    def __init__(self, **kwargs):
+        kwargs.setdefault('font_name', './fonts/TID-Bold.ttf')
+        super().__init__(**kwargs)
+
 class DataStore:
     def __init__(self): self.cfg = self.load_config()
     def load_config(self):
@@ -86,16 +108,14 @@ store = DataStore()
 class DepartureRow(BoxLayout):
     def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, is_big=False, **kwargs):
         
-        # Define specific sizes based on mode
         row_height = dp(80) if is_big else dp(50)
         pill_w = dp(65) if is_big else dp(46)
-        # Pill height is slightly smaller than the row
         self.pill_h = dp(50) if is_big else dp(32)
         
-        f_line = '22sp' if is_big else '15sp'
-        f_dest = '24sp' if is_big else '16sp'
-        f_time = '28sp' if is_big else '19sp'
-        f_aimed = '18sp' if is_big else '14sp'
+        f_line = sp(22) if is_big else sp(15)
+        f_dest = sp(24) if is_big else sp(16)
+        f_time = sp(28) if is_big else sp(19)
+        f_aimed = sp(18) if is_big else sp(14)
         time_w = dp(140) if is_big else dp(95)
 
         super().__init__(orientation='horizontal', size_hint_y=None, height=row_height, padding=[dp(10), 0], **kwargs)
@@ -107,17 +127,28 @@ class DepartureRow(BoxLayout):
             self.border = Rectangle(pos=(self.x, self.y), size=(self.width, dp(1)))
         self.bind(pos=self._update_graphics, size=self._update_graphics)
 
-        # 1. Pill Box: Remove padding to stop it from pushing the pill up
+        # 1. Pill Box
         pill_box = BoxLayout(size_hint_x=None, width=pill_w)
         line_color = get_line_color(line, mode)
         
         with pill_box.canvas.before:
             Color(*line_color)
-            # 2. Set the rectangle size once here
+            # The background pill is slightly narrower than the box for spacing
             self.pill_rect = RoundedRectangle(size=(pill_w - dp(6), self.pill_h), radius=[dp(4)])
             
         pill_box.bind(pos=self._update_pill, size=self._update_pill)
-        pill_box.add_widget(PixelLabel(text=line, bold=True, font_size=f_line))
+
+        # FIX: Added halign, valign, and bound size to text_size
+        self.line_label = PixelLabel(
+            text=line, 
+            bold=True, 
+            font_size=f_line,
+            halign='center', 
+            valign='middle'
+        )
+        self.line_label.bind(size=self._update_text_size) # Reuse the helper
+        
+        pill_box.add_widget(self.line_label)
         self.add_widget(pill_box)
 
         # Destination
@@ -142,12 +173,12 @@ class DepartureRow(BoxLayout):
         self.border.size = (instance.width, dp(1))
 
     def _update_text_size(self, instance, value): 
+        # This makes the text "box" match the widget size so alignment works
         instance.text_size = value
 
     def _update_pill(self, instance, value): 
-        # 3. Robust math: Center the rectangle exactly inside the box's current Y
-        # instance.y is the bottom of the row, height/2 is middle, pill_h/2 pulls it back to center
-        self.pill_rect.pos = (instance.x, instance.y + (instance.height - self.pill_h) / 2)
+        # Center the background rectangle
+        self.pill_rect.pos = (instance.x + dp(3), instance.y + (instance.height - self.pill_h) / 2)
 
 class PlatformWidget(BoxLayout):
     def __init__(self, platform_label, calls, on_click=None, is_big=False, **kwargs):
@@ -206,6 +237,8 @@ class PlatformWidget(BoxLayout):
 class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.last_update_success = datetime.now()
+
         self.filtered_quay = None
         self.last_data = []
         
@@ -218,19 +251,28 @@ class MainScreen(Screen):
             self.line = Rectangle(pos=(0, 0), size=(Window.width, dp(2)))
         header.bind(pos=self._update_line, size=self._update_line)
 
-        self.stop_name = Label(text="---", font_size='22sp', bold=True, halign='left', size_hint_x=0.4)
-        self.clock = Label(text="00:00", font_size='34sp', bold=True, size_hint_x=0.2)
+        self.stop_name = TIDLabel(text="---", font_size='22sp', bold=True, halign='left', size_hint_x=0.4)
+        self.clock = TIDLabel(text="00:00", font_size='34sp', bold=True, size_hint_x=0.2)
+        
+        self.stale_warning = PixelLabel(
+            text="OFFLINE / STALE DATA", 
+            color=(1, 0, 0, 1), 
+            font_size='14sp', 
+            bold=True,
+            size_hint_y=None, height=dp(20)
+        )
+        self.layout.add_widget(self.stale_warning)
         
         # Actions Container
         self.actions = BoxLayout(size_hint_x=0.4, spacing=dp(10), padding=[0, dp(10)])
         self.temp = PixelLabel(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.4, font_size="15sp")
         
         # The Back Button is created but NOT added yet
-        self.btn_back_all = Button(text="BACK", bold=True, background_color=(0, 0.4, 0.8, 1), size_hint_x=0.6)
+        self.btn_back_all = TIDButton(text="BACK", bold=True, background_color=(0, 0.4, 0.8, 1), size_hint_x=0.6)
         self.btn_back_all.bind(on_release=self.reset_filter)
         
-        self.btn_cfg = Button(text="CONFIG", bold=True, background_color=(0.2, 0.2, 0.2, 1))
-        self.btn_exit = Button(text="X", bold=True, size_hint_x=None, width=dp(50), background_color=(0.6, 0.1, 0.1, 1))
+        self.btn_cfg = TIDButton(text="CONFIG", bold=True, background_color=(0.2, 0.2, 0.2, 1))
+        self.btn_exit = TIDButton(text="X", bold=True, size_hint_x=None, width=dp(50), background_color=(0.6, 0.1, 0.1, 1))
         
         self.actions.add_widget(self.temp)
         self.actions.add_widget(self.btn_cfg)
@@ -272,7 +314,6 @@ class MainScreen(Screen):
         self.fetch_data()
         Clock.schedule_interval(lambda dt: self.fetch_data(), 20)
 
-    def tick(self, dt): self.clock.text = datetime.now().strftime("%H:%M"); self.temp.text = get_cpu_temp()
     def fetch_data(self): threading.Thread(target=self._query, daemon=True).start()
 
     def _query(self):
@@ -290,9 +331,14 @@ class MainScreen(Screen):
         }}'''
         try:
             r = requests.post("https://api.entur.io/journey-planner/v3/graphql", headers={"ET-Client-Name": "raspi-kivy"}, json={"query": q}, timeout=5)
-            self.last_data = r.json()["data"]["stopPlace"]["estimatedCalls"]
-            Clock.schedule_once(lambda dt: self.update_ui(self.last_data))
-        except: pass
+            if r.status_code == 200:
+                self.last_data = r.json()["data"]["stopPlace"]["estimatedCalls"]
+                self.last_update_success = datetime.now()
+                Clock.schedule_once(lambda dt: self.update_ui(self.last_data))
+            else:
+                print(f"API ERROR: {r.status_code} - {r.text}")
+        except Exception as e:
+            print(f"NETWORK ERROR: {e}")
 
     def update_ui(self, calls):
         self.stop_name.text = store.cfg['stop_name'].upper()
@@ -320,23 +366,40 @@ class MainScreen(Screen):
                 on_click=self.filter_to_quay,
                 is_big=is_single
             ))
+    
+    def tick(self, dt):
+        now = datetime.now()
+        self.clock.text = now.strftime("%H:%M")
+        self.temp.text = get_cpu_temp()
+        
+        # 1. TIME SYNC CHECK
+        if now.year < 2024:
+            self.stop_name.text = "WAITING FOR TIME SYNC..."
+            return
+
+        # 2. STALE DATA CHECK (If no update for 2 minutes)
+        delta = (now - self.last_update_success).total_seconds()
+        if delta > 120:
+            self.stale_warning.opacity = 1
+        else:
+            self.stale_warning.opacity = 0
 
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         layout = BoxLayout(orientation='vertical', padding=dp(30), spacing=dp(15))
-        layout.add_widget(Label(text="SEARCH STOP", font_size='24sp', bold=True, size_hint_y=None, height=dp(40)))
+        layout.add_widget(TIDLabel(text="SEARCH STOP", font_size='24sp', bold=True, size_hint_y=None, height=dp(40)))
 
         self.inp = TextInput(multiline=False, font_size='28sp', size_hint_y=None, height=dp(60), background_color=(0.1,0.1,0.1,1), foreground_color=(1,1,1,1), keyboard_suggestions=False)
         self.inp.bind(text=self.on_search)
         layout.add_widget(self.inp)
         
-        layout.add_widget(Label(text="MAX DEPARTURES PER PLATFORM", font_size='18sp', bold=True, size_hint_y=None, height=dp(30)))
+        layout.add_widget(TIDLabel(text="MAX DEPARTURES PER PLATFORM", font_size='18sp', bold=True, size_hint_y=None, height=dp(30)))
         
         max_ctrl = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(20))
-        btn_minus = Button(text="-", font_size='30sp', bold=True, background_color=(0.7, 0.2, 0.2, 1))
-        self.max_lbl = Label(text=str(store.cfg['max_per_quay']), font_size='30sp', bold=True)
-        btn_plus = Button(text="+", font_size='30sp', bold=True, background_color=(0.2, 0.7, 0.2, 1))
+        btn_minus = TIDButton(text="-", font_size='30sp', bold=True, background_color=(0.7, 0.2, 0.2, 1))
+        self.max_lbl = TIDLabel(text=str(store.cfg['max_per_quay']), font_size='30sp', bold=True)
+        btn_plus = TIDButton(text="+", font_size='30sp', bold=True, background_color=(0.2, 0.7, 0.2, 1))
         
         btn_minus.bind(on_release=self.dec_max)
         btn_plus.bind(on_release=self.inc_max)
@@ -351,7 +414,7 @@ class SettingsScreen(Screen):
         scroll = ScrollView(); scroll.add_widget(self.results)
         layout.add_widget(scroll)
 
-        self.btn_back = Button(text="CANCEL", size_hint_y=None, height=dp(60))
+        self.btn_back = TIDButton(text="CANCEL", size_hint_y=None, height=dp(60))
         layout.add_widget(self.btn_back); self.add_widget(layout)
     
     def inc_max(self, instance):

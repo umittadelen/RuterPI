@@ -232,67 +232,6 @@ class PlatformWidget(BoxLayout):
 
     def _update_border(self, instance, value): self.border.rectangle = (instance.x, instance.y, instance.width, instance.height)
 
-class AlertBox(BoxLayout):
-    def __init__(self, **kwargs):
-        # Increased height and added padding
-        super().__init__(orientation='horizontal', size_hint_y=None, height=0, opacity=0, padding=[dp(10), 0], **kwargs)
-        
-        with self.canvas.before:
-            # Ruter/Entur Warning Yellow
-            Color(1, 0.82, 0, 1) 
-            self.bg = Rectangle(pos=self.pos, size=self.size)
-            # Black border at the top
-            Color(0, 0, 0, 1)
-            self.border = Rectangle(pos=(self.x, self.y + self.height - dp(2)), size=(self.width, dp(2)))
-            
-        # These two lines require the methods below to exist!
-        self.bind(pos=self._update_rect, size=self._update_rect)
-        
-        # Alert Icon
-        self.add_widget(Label(text="⚠️", size_hint_x=None, width=dp(40), color=(0,0,0,1), font_size='24sp', bold=True))
-        
-        # Alert Text
-        self.label = Label(
-            text="", 
-            color=(0,0,0,1), 
-            bold=True, 
-            font_size='14sp', 
-            halign='left', 
-            valign='middle',
-            font_name='./fonts/TID-Bold.ttf' 
-        )
-        self.label.bind(size=self._update_text_size)
-        self.add_widget(self.label)
-
-    # --- THE MISSING METHODS ---
-    def _update_text_size(self, instance, value):
-        # This allows the text to wrap and align properly
-        instance.text_size = value
-
-    def _update_rect(self, instance, value):
-        # This keeps the yellow background and border aligned when the window moves or resizes
-        self.bg.pos = instance.pos
-        self.bg.size = instance.size
-        self.border.pos = (instance.x, instance.y + instance.height - dp(1))
-        self.border.size = (instance.width, dp(1))
-    # ---------------------------
-
-    def update_alerts(self, alerts):
-        if not alerts:
-            self.height = 0
-            self.opacity = 0
-            self.label.text = ""
-        else:
-            # Deduplicate
-            unique = []
-            for a in alerts:
-                if a and a not in unique: unique.append(a)
-            
-            self.label.text = " | ".join(unique).upper()
-            # Set height to fit content (dp(60) is usually enough for 2 lines)
-            self.height = dp(65)
-            self.opacity = 1
-
 # --- 4. SCREENS ---
 
 class MainScreen(Screen):
@@ -351,10 +290,6 @@ class MainScreen(Screen):
         self.scroll.add_widget(self.board_grid)
         self.layout.add_widget(header)
         self.layout.add_widget(self.scroll)
-
-        self.alert_box = AlertBox()
-        self.layout.add_widget(self.alert_box)
-
         self.add_widget(self.layout)
 
     def _update_line(self, instance, value): self.line.pos = (instance.x, instance.y); self.line.size = (instance.width, dp(2))
@@ -384,31 +319,20 @@ class MainScreen(Screen):
     def _query(self):
         q = f'''{{
           stopPlace(id: "{store.cfg['stop_id']}") {{
-            name
-            situations {{
-              summary {{ value }}
-            }}
             estimatedCalls(numberOfDepartures: 50) {{
               aimedDepartureTime
               expectedDepartureTime
               predictionInaccurate
               quay {{ id publicCode name }}
               destinationDisplay {{ frontText }}
-              serviceJourney {{ 
-                transportMode 
-                line {{ publicCode }} 
-                situations {{
-                  summary {{ value }}
-                }}
-              }}
+              serviceJourney {{ transportMode line {{ publicCode }} }}
             }}
           }}
         }}'''
         try:
             r = requests.post("https://api.entur.io/journey-planner/v3/graphql", headers={"ET-Client-Name": "raspi-kivy"}, json={"query": q}, timeout=5)
             if r.status_code == 200:
-                stop_data = r.json()["data"]["stopPlace"]
-                self.last_data = stop_data # Store the object
+                self.last_data = r.json()["data"]["stopPlace"]["estimatedCalls"]
                 self.last_update_success = datetime.now()
                 Clock.schedule_once(lambda dt: self.update_ui(self.last_data))
             else:
@@ -416,41 +340,24 @@ class MainScreen(Screen):
         except Exception as e:
             print(f"NETWORK ERROR: {e}")
 
-    def update_ui(self, data):
-        stop_info = data
-        calls = stop_info.get("estimatedCalls", [])
-        
+    def update_ui(self, calls):
         self.stop_name.text = store.cfg['stop_name'].upper()
         self.board_grid.clear_widgets()
         
-        all_situations = []
-        
-        # 1. Collect Stop-Wide Alerts (e.g., "Stop is closed")
-        for s in stop_info.get("situations", []):
-            summary = s.get("summary", [{}])[0].get("value")
-            if summary: all_situations.append(summary)
-
-        # 2. Collect Trip-Specific Alerts (e.g., "Line 31 is delayed")
         is_single = self.filtered_quay is not None
         self.board_grid.cols = 2 if not self.filtered_quay else 1
         
         grouped = {}
         now = datetime.now(timezone.utc)
         for c in calls:
-            # Extract trip alerts
-            sits = c.get("serviceJourney", {}).get("situations", [])
-            for s in sits:
-                summary = s.get("summary", [{}])[0].get("value")
-                if summary: all_situations.append(summary)
             expected = datetime.fromisoformat(c["expectedDepartureTime"].replace("Z", "+00:00"))
             if 0 <= (expected - now).total_seconds() <= 3600:
                 q_info = c.get("quay", {})
                 p_label = q_info.get("publicCode") or q_info.get("name", "").replace(store.cfg['stop_name'], "").strip()
                 if not p_label or len(p_label) > 5: p_label = q_info.get("id", "??").split(":")[-1]
+                
                 if self.filtered_quay and p_label != self.filtered_quay: continue
                 grouped.setdefault(p_label, []).append(c)
-        
-        self.alert_box.update_alerts(all_situations)
 
         for p_label in sorted(grouped.keys()):
             self.board_grid.add_widget(PlatformWidget(
