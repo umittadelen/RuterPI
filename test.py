@@ -84,6 +84,14 @@ class TIDLabel(Label): #./fonts/TID-Bold.ttf
         kwargs.setdefault('font_name', './fonts/TID-Bold.ttf') 
         super().__init__(**kwargs)
 
+class TIDButton(Button):
+    def __init__(self, **kwargs):
+        # Set the font
+        kwargs.setdefault('font_name', './fonts/TID-Bold.ttf')
+        super().__init__(**kwargs)
+        # Bind to texture change to keep it pixel-sharp (like your PixelLabel)
+        self.bind(texture=self._update_texture_filters)
+
 class DataStore:
     def __init__(self): self.cfg = self.load_config()
     def load_config(self):
@@ -263,11 +271,11 @@ class MainScreen(Screen):
         self.temp = PixelLabel(text="--°C", color=(0.7,0.7,0.7,1), size_hint_x=0.4, font_size="15sp")
         
         # The Back Button is created but NOT added yet
-        self.btn_back_all = Button(text="BACK", bold=True, background_color=(0, 0.4, 0.8, 1), size_hint_x=0.6)
+        self.btn_back_all = TIDButton(text="BACK", bold=True, background_color=(0, 0.4, 0.8, 1), size_hint_x=0.6)
         self.btn_back_all.bind(on_release=self.reset_filter)
         
-        self.btn_cfg = Button(text="CONFIG", bold=True, background_color=(0.2, 0.2, 0.2, 1))
-        self.btn_exit = Button(text="X", bold=True, size_hint_x=None, width=dp(50), background_color=(0.6, 0.1, 0.1, 1))
+        self.btn_cfg = TIDButton(text="CONFIG", bold=True, background_color=(0.2, 0.2, 0.2, 1))
+        self.btn_exit = TIDButton(text="X", bold=True, size_hint_x=None, width=dp(50), background_color=(0.6, 0.1, 0.1, 1))
         
         self.actions.add_widget(self.temp)
         self.actions.add_widget(self.btn_cfg)
