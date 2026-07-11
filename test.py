@@ -89,8 +89,6 @@ class TIDButton(Button):
         # Set the font
         kwargs.setdefault('font_name', './fonts/TID-Bold.ttf')
         super().__init__(**kwargs)
-        # Bind to texture change to keep it pixel-sharp (like your PixelLabel)
-        self.bind(texture=self._update_texture_filters)
 
 class DataStore:
     def __init__(self): self.cfg = self.load_config()
