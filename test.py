@@ -26,7 +26,7 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.vkeyboard import VKeyboard
 from kivy.clock import Clock
 from kivy.graphics import Color, RoundedRectangle, Line, Rectangle, RenderContext
-from kivy.metrics import dp
+from kivy.metrics import dp, sp
 from kivy.core.window import Window
 
 class BigKeyboard(VKeyboard):
@@ -102,10 +102,10 @@ class DepartureRow(BoxLayout):
         pill_w = dp(65) if is_big else dp(46)
         self.pill_h = dp(50) if is_big else dp(32)
         
-        f_line = '22sp' if is_big else '15sp'
-        f_dest = '24sp' if is_big else '16sp'
-        f_time = '28sp' if is_big else '19sp'
-        f_aimed = '18sp' if is_big else '14sp'
+        f_line = sp(22) if is_big else sp(15)
+        f_dest = sp(24) if is_big else sp(16)
+        f_time = sp(28) if is_big else sp(19)
+        f_aimed = sp(18) if is_big else sp(14)
         time_w = dp(140) if is_big else dp(95)
 
         super().__init__(orientation='horizontal', size_hint_y=None, height=row_height, padding=[dp(10), 0], **kwargs)
