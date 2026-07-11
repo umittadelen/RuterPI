@@ -96,15 +96,15 @@ store = DataStore()
 class DepartureRow(BoxLayout):
     def __init__(self, line, dest, time_str, aimed_str, is_delayed, is_cancelled, mins, mode, is_big=False, **kwargs):
         
-        row_height = int(dp(80)) if is_big else int(dp(50))
-        pill_w = int(dp(65)) if is_big else int(dp(46))
-        self.pill_h = int(dp(50)) if is_big else int(dp(32))
+        row_height = dp(80) if is_big else dp(50)
+        pill_w = dp(65) if is_big else dp(46)
+        self.pill_h = dp(50) if is_big else dp(32)
         
-        f_line = int(dp(22)) if is_big else int(dp(15))
-        f_dest = int(dp(24)) if is_big else int(dp(16))
-        f_time = int(dp(28)) if is_big else int(dp(19))
-        f_aimed = int(dp(18)) if is_big else int(dp(14))
-        time_w = int(dp(140)) if is_big else int(dp(95))
+        f_line = '22sp' if is_big else '15sp'
+        f_dest = '24sp' if is_big else '16sp'
+        f_time = '28sp' if is_big else '19sp'
+        f_aimed = '18sp' if is_big else '14sp'
+        time_w = dp(140) if is_big else dp(95)
 
         super().__init__(orientation='horizontal', size_hint_y=None, height=row_height, padding=[dp(10), 0], **kwargs)
         
