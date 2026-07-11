@@ -234,42 +234,63 @@ class PlatformWidget(BoxLayout):
 
 class AlertBox(BoxLayout):
     def __init__(self, **kwargs):
-        # Increased height to dp(60) to fit more text
+        # Increased height and added padding
         super().__init__(orientation='horizontal', size_hint_y=None, height=0, opacity=0, padding=[dp(10), 0], **kwargs)
         
         with self.canvas.before:
+            # Ruter/Entur Warning Yellow
             Color(1, 0.82, 0, 1) 
             self.bg = Rectangle(pos=self.pos, size=self.size)
+            # Black border at the top
             Color(0, 0, 0, 1)
             self.border = Rectangle(pos=(self.x, self.y + self.height - dp(2)), size=(self.width, dp(2)))
+            
+        # These two lines require the methods below to exist!
         self.bind(pos=self._update_rect, size=self._update_rect)
         
+        # Alert Icon
         self.add_widget(Label(text="⚠️", size_hint_x=None, width=dp(40), color=(0,0,0,1), font_size='24sp', bold=True))
         
-        self.label = Label( # Use standard Label for better wrapping
+        # Alert Text
+        self.label = Label(
             text="", 
             color=(0,0,0,1), 
             bold=True, 
-            font_size='14sp', # Slightly smaller to fit more
+            font_size='14sp', 
             halign='left', 
             valign='middle',
-            font_name='./fonts/TID-Bold.ttf' # Manual font apply
+            font_name='./fonts/TID-Bold.ttf' 
         )
         self.label.bind(size=self._update_text_size)
         self.add_widget(self.label)
+
+    # --- THE MISSING METHODS ---
+    def _update_text_size(self, instance, value):
+        # This allows the text to wrap and align properly
+        instance.text_size = value
+
+    def _update_rect(self, instance, value):
+        # This keeps the yellow background and border aligned when the window moves or resizes
+        self.bg.pos = instance.pos
+        self.bg.size = instance.size
+        self.border.pos = (instance.x, instance.y + instance.height - dp(1))
+        self.border.size = (instance.width, dp(1))
+    # ---------------------------
 
     def update_alerts(self, alerts):
         if not alerts:
             self.height = 0
             self.opacity = 0
+            self.label.text = ""
         else:
-            # Clean up duplicates and join
+            # Deduplicate
             unique = []
             for a in alerts:
-                if a not in unique: unique.append(a)
+                if a and a not in unique: unique.append(a)
             
-            self.label.text = " | ".join(unique)
-            self.height = dp(65) # Taller to handle the Fornebuparken text
+            self.label.text = " | ".join(unique).upper()
+            # Set height to fit content (dp(60) is usually enough for 2 lines)
+            self.height = dp(65)
             self.opacity = 1
 
 # --- 4. SCREENS ---
@@ -396,7 +417,7 @@ class MainScreen(Screen):
             print(f"NETWORK ERROR: {e}")
 
     def update_ui(self, data):
-        stop_info = data # This is r.json()["data"]["stopPlace"]
+        stop_info = data
         calls = stop_info.get("estimatedCalls", [])
         
         self.stop_name.text = store.cfg['stop_name'].upper()
