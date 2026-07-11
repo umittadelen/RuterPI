@@ -102,6 +102,16 @@ class DepartureRow(BoxLayout):
         pill_w = dp(65) if is_big else dp(46)
         self.pill_h = dp(50) if is_big else dp(32)
         
+        line_len = len(line)
+        if is_big:
+            if line_len <= 2: f_line = '24sp'
+            elif line_len <= 3: f_line = '20sp'
+            else: f_line = '16sp' # For "B1 X"
+        else:
+            if line_len <= 2: f_line = '17sp'
+            elif line_len <= 3: f_line = '14sp'
+            else: f_line = '12sp' # For "B1 X"
+        
         f_line = '22sp' if is_big else '15sp'
         f_dest = '24sp' if is_big else '16sp'
         f_time = '28sp' if is_big else '19sp'
