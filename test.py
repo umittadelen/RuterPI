@@ -63,19 +63,32 @@ def get_cpu_temp():
 
 class PixelLabel(Label):
     def __init__(self, **kwargs):
-        # 1. Force font hinting to 'mono' to stop anti-aliasing at the engine level
         kwargs.setdefault('font_hinting', 'mono')
         kwargs.setdefault('font_name', './fonts/MS PGothic.ttf') 
         super().__init__(**kwargs)
-        # Bind to texture change to reset filtering
+        
         self.bind(texture=self._update_texture_filters)
+        # Bind to position and size to ensure we stay snapped to the pixel grid
+        self.bind(pos=self._snap_to_pixel, size=self._snap_to_pixel)
 
     def _update_texture_filters(self, instance, texture):
         if texture:
-            # 2. Set 'nearest' filtering to prevent blurring when the font 
-            # doesn't perfectly align with the pixel grid
             texture.min_filter = 'nearest'
             texture.mag_filter = 'nearest'
+
+    def _snap_to_pixel(self, *args):
+        """
+        Forces the widget to integer coordinates. 
+        This prevents the 1px 'jitter' or shifting.
+        """
+        if self.canvas:
+            self.x = round(self.x)
+            self.y = round(self.y)
+
+    # We override the internal texture drawing slightly by 
+    # ensuring the texture size is also an integer.
+    def on_texture_size(self, instance, value):
+        self.texture_update()
 
 class DataStore:
     def __init__(self): self.cfg = self.load_config()
