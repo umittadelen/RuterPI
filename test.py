@@ -389,18 +389,18 @@ class SettingsScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         layout = BoxLayout(orientation='vertical', padding=dp(30), spacing=dp(15))
-        layout.add_widget(Label(text="SEARCH STOP", font_size='24sp', bold=True, size_hint_y=None, height=dp(40)))
+        layout.add_widget(TIDLabel(text="SEARCH STOP", font_size='24sp', bold=True, size_hint_y=None, height=dp(40)))
 
         self.inp = TextInput(multiline=False, font_size='28sp', size_hint_y=None, height=dp(60), background_color=(0.1,0.1,0.1,1), foreground_color=(1,1,1,1), keyboard_suggestions=False)
         self.inp.bind(text=self.on_search)
         layout.add_widget(self.inp)
         
-        layout.add_widget(Label(text="MAX DEPARTURES PER PLATFORM", font_size='18sp', bold=True, size_hint_y=None, height=dp(30)))
+        layout.add_widget(TIDLabel(text="MAX DEPARTURES PER PLATFORM", font_size='18sp', bold=True, size_hint_y=None, height=dp(30)))
         
         max_ctrl = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(20))
-        btn_minus = Button(text="-", font_size='30sp', bold=True, background_color=(0.7, 0.2, 0.2, 1))
-        self.max_lbl = Label(text=str(store.cfg['max_per_quay']), font_size='30sp', bold=True)
-        btn_plus = Button(text="+", font_size='30sp', bold=True, background_color=(0.2, 0.7, 0.2, 1))
+        btn_minus = TIDButton(text="-", font_size='30sp', bold=True, background_color=(0.7, 0.2, 0.2, 1))
+        self.max_lbl = TIDLabel(text=str(store.cfg['max_per_quay']), font_size='30sp', bold=True)
+        btn_plus = TIDButton(text="+", font_size='30sp', bold=True, background_color=(0.2, 0.7, 0.2, 1))
         
         btn_minus.bind(on_release=self.dec_max)
         btn_plus.bind(on_release=self.inc_max)
@@ -415,7 +415,7 @@ class SettingsScreen(Screen):
         scroll = ScrollView(); scroll.add_widget(self.results)
         layout.add_widget(scroll)
 
-        self.btn_back = Button(text="CANCEL", size_hint_y=None, height=dp(60))
+        self.btn_back = TIDButton(text="CANCEL", size_hint_y=None, height=dp(60))
         layout.add_widget(self.btn_back); self.add_widget(layout)
     
     def inc_max(self, instance):
