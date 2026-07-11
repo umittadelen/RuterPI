@@ -63,35 +63,19 @@ def get_cpu_temp():
 
 class PixelLabel(Label):
     def __init__(self, **kwargs):
-        # 1. Standard Pixel-Art setup
+        # 1. Force font hinting to 'mono' to stop anti-aliasing at the engine level
         kwargs.setdefault('font_hinting', 'mono')
-        kwargs.setdefault('font_name', './fonts/MS PGothic.ttf')
+        kwargs.setdefault('font_name', './fonts/MS PGothic.ttf') 
         super().__init__(**kwargs)
-        
-        # 2. Disable Kerning to keep letter spacing consistent
-        self.kerning = False 
-        
+        # Bind to texture change to reset filtering
         self.bind(texture=self._update_texture_filters)
-        self.bind(pos=self._snap_to_pixel, size=self._snap_to_pixel)
 
     def _update_texture_filters(self, instance, texture):
         if texture:
+            # 2. Set 'nearest' filtering to prevent blurring when the font 
+            # doesn't perfectly align with the pixel grid
             texture.min_filter = 'nearest'
             texture.mag_filter = 'nearest'
-
-    def _snap_to_pixel(self, *args):
-        # Round the position and size to absolute integers
-        self.pos = (round(self.x), round(self.y))
-        self.size = (round(self.width), round(self.height))
-
-    def on_font_size(self, instance, value):
-        # Force font size to be a whole number (prevents collapsed 1px gaps)
-        if isinstance(value, str) and value.endswith('sp'):
-            # Convert '15sp' to actual pixels, then round it
-            px_val = self.get_root_window().dpi / 96.0 * float(value[:-2])
-            self.font_size = round(px_val)
-        elif isinstance(value, (int, float)):
-            self.font_size = round(value)
 
 class DataStore:
     def __init__(self): self.cfg = self.load_config()
