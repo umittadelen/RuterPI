@@ -227,6 +227,8 @@ class PlatformWidget(BoxLayout):
 class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.last_update_success = datetime.now()
+
         self.filtered_quay = None
         self.last_data = []
         
@@ -241,6 +243,15 @@ class MainScreen(Screen):
 
         self.stop_name = Label(text="---", font_size='22sp', bold=True, halign='left', size_hint_x=0.4)
         self.clock = Label(text="00:00", font_size='34sp', bold=True, size_hint_x=0.2)
+        
+        self.stale_warning = PixelLabel(
+            text="OFFLINE / STALE DATA", 
+            color=(1, 0, 0, 1), 
+            font_size='14sp', 
+            bold=True,
+            size_hint_y=None, height=dp(20)
+        )
+        self.layout.add_widget(self.stale_warning)
         
         # Actions Container
         self.actions = BoxLayout(size_hint_x=0.4, spacing=dp(10), padding=[0, dp(10)])
@@ -293,7 +304,6 @@ class MainScreen(Screen):
         self.fetch_data()
         Clock.schedule_interval(lambda dt: self.fetch_data(), 20)
 
-    def tick(self, dt): self.clock.text = datetime.now().strftime("%H:%M"); self.temp.text = get_cpu_temp()
     def fetch_data(self): threading.Thread(target=self._query, daemon=True).start()
 
     def _query(self):
@@ -311,9 +321,14 @@ class MainScreen(Screen):
         }}'''
         try:
             r = requests.post("https://api.entur.io/journey-planner/v3/graphql", headers={"ET-Client-Name": "raspi-kivy"}, json={"query": q}, timeout=5)
-            self.last_data = r.json()["data"]["stopPlace"]["estimatedCalls"]
-            Clock.schedule_once(lambda dt: self.update_ui(self.last_data))
-        except: pass
+            if r.status_code == 200:
+                self.last_data = r.json()["data"]["stopPlace"]["estimatedCalls"]
+                self.last_update_success = datetime.now()
+                Clock.schedule_once(lambda dt: self.update_ui(self.last_data))
+            else:
+                print(f"API ERROR: {r.status_code} - {r.text}")
+        except Exception as e:
+            print(f"NETWORK ERROR: {e}")
 
     def update_ui(self, calls):
         self.stop_name.text = store.cfg['stop_name'].upper()
@@ -341,6 +356,23 @@ class MainScreen(Screen):
                 on_click=self.filter_to_quay,
                 is_big=is_single
             ))
+    
+    def tick(self, dt):
+        now = datetime.now()
+        self.clock.text = now.strftime("%H:%M")
+        self.temp.text = get_cpu_temp()
+        
+        # 1. TIME SYNC CHECK
+        if now.year < 2024:
+            self.stop_name.text = "WAITING FOR TIME SYNC..."
+            return
+
+        # 2. STALE DATA CHECK (If no update for 2 minutes)
+        delta = (now - self.last_update_success).total_seconds()
+        if delta > 120:
+            self.stale_warning.opacity = 1
+        else:
+            self.stale_warning.opacity = 0
 
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
