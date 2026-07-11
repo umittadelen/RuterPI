@@ -63,12 +63,15 @@ def get_cpu_temp():
 
 class PixelLabel(Label):
     def __init__(self, **kwargs):
+        # 1. Standard Pixel-Art setup
         kwargs.setdefault('font_hinting', 'mono')
-        kwargs.setdefault('font_name', './fonts/MS PGothic.ttf') 
+        kwargs.setdefault('font_name', './fonts/MS PGothic.ttf')
         super().__init__(**kwargs)
         
+        # 2. Disable Kerning to keep letter spacing consistent
+        self.kerning = False 
+        
         self.bind(texture=self._update_texture_filters)
-        # Bind to position and size to ensure we stay snapped to the pixel grid
         self.bind(pos=self._snap_to_pixel, size=self._snap_to_pixel)
 
     def _update_texture_filters(self, instance, texture):
@@ -77,18 +80,18 @@ class PixelLabel(Label):
             texture.mag_filter = 'nearest'
 
     def _snap_to_pixel(self, *args):
-        """
-        Forces the widget to integer coordinates. 
-        This prevents the 1px 'jitter' or shifting.
-        """
-        if self.canvas:
-            self.x = round(self.x)
-            self.y = round(self.y)
+        # Round the position and size to absolute integers
+        self.pos = (round(self.x), round(self.y))
+        self.size = (round(self.width), round(self.height))
 
-    # We override the internal texture drawing slightly by 
-    # ensuring the texture size is also an integer.
-    def on_texture_size(self, instance, value):
-        self.texture_update()
+    def on_font_size(self, instance, value):
+        # Force font size to be a whole number (prevents collapsed 1px gaps)
+        if isinstance(value, str) and value.endswith('sp'):
+            # Convert '15sp' to actual pixels, then round it
+            px_val = self.get_root_window().dpi / 96.0 * float(value[:-2])
+            self.font_size = round(px_val)
+        elif isinstance(value, (int, float)):
+            self.font_size = round(value)
 
 class DataStore:
     def __init__(self): self.cfg = self.load_config()
